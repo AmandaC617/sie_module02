@@ -1,0 +1,12 @@
+{
+  "brand_name": "台灣品牌A",
+  "related_entities": ["產品B", "集團C"],
+  "media_weights": {
+    "industry_news": 10,
+    "mainstream_news": 8,
+    "social_media": 5,
+    "video_sites": 5,
+    "ecommerce_retail": 2
+  },
+  "official_info": "台灣品牌A是台灣領先的科技公司，主力產品為產品B。"
+} 
