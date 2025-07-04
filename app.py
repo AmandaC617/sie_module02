@@ -1,29 +1,27 @@
 import streamlit as st
-import json
-import datetime
-import random
-import time
 import pandas as pd
-import plotly.graph_objects as go
 import plotly.express as px
-from dateutil import parser as date_parser
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import json
+from datetime import datetime
+import os
+from typing import Dict, List, Optional
 
-try:
-    import wikipediaapi
-except ImportError:
-    print("警告: 'wikipedia-api' 函式庫未安裝。維基百科檢查功能將無法運作。")
-    print("請執行: pip install wikipedia-api")
-    wikipediaapi = None
+# 導入自定義模組
+from sie_module02.website_ai_readiness import run_website_analysis
+from sie_module02.eeat_benchmarking import run_eeat_benchmarking
+from sie_module02.eeat_module import run_module_2 as run_eeat_analysis
 
-# 頁面設定
+# 設定頁面配置
 st.set_page_config(
-    page_title="E-E-A-T 分析工具",
-    page_icon="🔍",
+    page_title="SIE 平台 - 智能搜尋引擎優化分析",
+    page_icon="🚀",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# 自訂 CSS
+# 自定義 CSS 樣式
 st.markdown("""
 <style>
     .main-header {
@@ -36,564 +34,691 @@ st.markdown("""
     }
     .metric-card {
         background: white;
-        padding: 1rem;
+        padding: 1.5rem;
         border-radius: 10px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         border-left: 4px solid #667eea;
+        margin: 1rem 0;
     }
-    .score-high { color: #28a745; }
-    .score-medium { color: #ffc107; }
-    .score-low { color: #dc3545; }
+    .success-card {
+        border-left-color: #28a745;
+    }
+    .warning-card {
+        border-left-color: #ffc107;
+    }
+    .error-card {
+        border-left-color: #dc3545;
+    }
+    .info-card {
+        border-left-color: #17a2b8;
+    }
+    .sidebar .sidebar-content {
+        background-color: #f8f9fa;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-def mock_google_custom_search(query: str, media_type: str) -> dict:
-    """模擬 Google Custom Search JSON API 的回應。"""
-    time.sleep(0.1)
-    
-    results = {
-        "industry_news": [
-            {
-                "title": f"{query} 發布革命性核心產品B，引領產業新標準",
-                "link": f"https://news.example-industry.com/{query.lower()}-product-b-launch",
-                "snippet": f"台灣領先品牌 {query} 今日宣布推出其劃時代的核心產品B，該產品採用最新AI晶片，效能提升200%。",
-                "pagemap": {"metatags": [{"article:published_time": "2025-07-01T10:00:00Z"}]}
-            },
-            {
-                "title": f"專家分析：{query} 的市場策略如何顛覆現狀",
-                "link": f"https://analysis.example-industry.com/{query.lower()}-strategy",
-                "snippet": f"產業分析師指出，{query} 近期的多角化經營策略，特別是在綠色能源領域的投入，展現其強大企圖心。",
-                "pagemap": {"metatags": [{"article:published_time": "2025-06-15T14:30:00Z"}]}
-            },
-            {
-                "title": f"{query} 榮獲年度最佳創新企業獎",
-                "link": f"https://awards.example-industry.com/{query.lower()}-innovation-2025",
-                "snippet": f"在年度產業評選中，{query} 憑藉其創新的技術研發和市場表現，榮獲最佳創新企業獎項。",
-                "pagemap": {"metatags": [{"article:published_time": "2025-06-20T09:00:00Z"}]}
-            }
-        ],
-        "mainstream_news": [
-            {
-                "title": f"{query} 連續三年榮獲最佳雇主獎",
-                "link": f"https://mainstream.example.com/{query.lower()}-best-employer-2025",
-                "snippet": f"知名人力資源顧問公司公布年度最佳雇主，{query} 因其優異的員工福利與企業文化再次上榜。",
-                "pagemap": {"metatags": [{"article:published_time": "2025-05-20T11:00:00Z"}]}
-            },
-            {
-                "title": f"{query} 股價今日小幅波動",
-                "link": f"https://finance.example.com/{query.lower()}-stock-today",
-                "snippet": f"受到國際市場影響，{query} 股價今日收盤時下跌 0.5%，市場普遍認為屬於正常技術性回檔。",
-                "pagemap": {"metatags": [{"article:published_time": "2025-07-02T08:00:00Z"}]}
-            },
-            {
-                "title": f"消費者報告：{query} 客戶服務滿意度調查",
-                "link": f"https://consumer.example.com/{query.lower()}-service-review",
-                "snippet": f"一份最新的報告顯示，約有 5% 的使用者回報核心產品B在特定情況下有過熱問題，{query}官方已回應將提供軟體更新。",
-                "pagemap": {"metatags": [{"article:published_time": "2025-06-10T18:00:00Z"}]}
-            },
-            {
-                "title": f"{query} 宣布擴大投資研發中心",
-                "link": f"https://business.example.com/{query.lower()}-rd-investment",
-                "snippet": f"{query} 今日宣布將投資 50 億元擴建研發中心，預計將創造 500 個就業機會。",
-                "pagemap": {"metatags": [{"article:published_time": "2025-06-25T14:00:00Z"}]}
-            }
-        ],
-        "social_media": [
-            {
-                "title": f"Dcard 網友熱議 {query} 的新功能，CP值超高！",
-                "link": f"https://dcard.tw/f/tech/p/123456789",
-                "snippet": f"最近剛入手{query}的核心產品B，真心覺得不錯，操作很順暢，而且外型也好看，不知道大家覺得如何？ #開箱 #{query}",
-                "pagemap": {"metatags": [{"article:published_time": "2025-06-28T22:15:00Z"}]}
-            },
-            {
-                "title": f"PTT MobileComm版 - {query} 產品B災情回報？",
-                "link": f"https://www.ptt.cc/bbs/MobileComm/M.1234567890.A.ABC.html",
-                "snippet": f"我的{query}產品B用了一週，感覺電池續航力沒有想像中好，有人也一樣嗎？還是我拿到機王了...",
-                "pagemap": {"metatags": [{"article:published_time": "2025-06-25T13:00:00Z"}]}
-            },
-            {
-                "title": f"Facebook 網友分享 {query} 使用心得",
-                "link": f"https://facebook.com/groups/tech/posts/123456789",
-                "snippet": f"用了{query}的產品三個月，整體來說很滿意，客服也很專業，推薦給大家！",
-                "pagemap": {"metatags": [{"article:published_time": "2025-06-30T10:30:00Z"}]}
-            }
-        ],
-        "video_sites": [
-            {
-                "title": f"【知名 YouTuber】{query} 核心產品B 深度開箱！真的值得買嗎？",
-                "link": f"https://youtube.com/watch?v=abcdef123",
-                "snippet": f"這次我們搶先拿到了 {query} 的年度旗艦產品B，從外觀設計到內部效能，進行一個全面的實測！",
-                "pagemap": {"metatags": [{"article:published_time": "2025-06-20T20:00:00Z"}]}
-            },
-            {
-                "title": f"【科技頻道】{query} 產品評測：性價比之王？",
-                "link": f"https://youtube.com/watch?v=defghi456",
-                "snippet": f"深入分析 {query} 最新產品的優缺點，看看是否真的值得入手！",
-                "pagemap": {"metatags": [{"article:published_time": "2025-06-22T15:00:00Z"}]}
-            }
-        ],
-        "ecommerce_retail": [
-            {
-                "title": f"PChome {query} 產品熱銷中",
-                "link": f"https://pchome.com.tw/prod/123456",
-                "snippet": f"{query} 產品在 PChome 24h 購物熱銷，網友評價平均 4.5 顆星。",
-                "pagemap": {"metatags": [{"article:published_time": "2025-06-15T12:00:00Z"}]}
-            }
-        ]
-    }
-    
-    if random.random() > 0.8 and media_type not in ["industry_news", "mainstream_news"]:
-        return {"items": []}
-        
-    return {"items": results.get(media_type, [])}
-
-def mock_gemini_api(snippet: str, official_info: str) -> str:
-    """模擬 Gemini API 進行內容正確性比對。"""
-    time.sleep(0.05)
-    
-    negative_keywords = ["過熱", "災情", "下跌", "電池續航力沒有想像中好", "問題", "故障"]
-    if any(keyword in snippet for keyword in negative_keywords):
-        return "Uncertain"
-    
-    positive_keywords = ["革命性", "新功能", "最佳雇主", "CP值超高", "滿意", "推薦", "優秀"]
-    if any(keyword in snippet for keyword in positive_keywords):
-        return "Correct"
-        
-    return "Correct"
-
-def check_wikipedia_presence(entities: list, user_agent: str) -> dict:
-    """使用 Wikipedia API 檢查品牌和相關實體是否被維基百科收錄。"""
-    if not wikipediaapi:
-        return {"brand_found": False, "related_entities_found": []}
-
-    wiki_client = wikipediaapi.Wikipedia(language='zh-tw', user_agent=user_agent)
-    presence = {"brand_found": False, "related_entities_found": []}
-    
-    brand_name = entities[0]
-    page_brand = wiki_client.page(brand_name)
-    if page_brand.exists():
-        presence["brand_found"] = True
-
-    for entity in entities[1:]:
-        page_entity = wiki_client.page(entity)
-        if page_entity.exists():
-            presence["related_entities_found"].append(entity)
-            
-    return presence
-
-def analyze_media_mentions(brand_name: str, related_entities: list, media_weights: dict, official_info: str) -> dict:
-    """遍歷各媒體類型，分析媒體提及並進行正確性檢查。"""
-    all_mentions = {}
-    search_entities = [brand_name] + related_entities
-
-    for media_type in media_weights.keys():
-        all_mentions[media_type] = []
-        for entity in search_entities:
-            response = mock_google_custom_search(entity, media_type)
-            
-            if "items" in response:
-                for item in response["items"]:
-                    try:
-                        date_str = item.get("pagemap", {}).get("metatags", [{}])[0].get("article:published_time", "")
-                        parsed_date = date_parser.parse(date_str).date()
-                    except (ValueError, TypeError):
-                        parsed_date = datetime.date(1970, 1, 1)
-
-                    accuracy = mock_gemini_api(item.get("snippet", ""), official_info)
-
-                    all_mentions[media_type].append({
-                        "title": item.get("title", "無標題"),
-                        "url": item.get("link", "#"),
-                        "date_obj": parsed_date,
-                        "date": parsed_date.isoformat() if parsed_date != datetime.date(1970, 1, 1) else "N/A",
-                        "accuracy_check": accuracy,
-                        "snippet": item.get("snippet", "")
-                    })
-
-    mentions_by_type = []
-    total_mentions = 0
-    for media_type, mentions in all_mentions.items():
-        if not mentions:
-            mentions_by_type.append({
-                "type": media_type,
-                "count": 0,
-                "weight": media_weights[media_type],
-                "latest_mention": None
-            })
-            continue
-
-        mentions.sort(key=lambda x: x["date_obj"], reverse=True)
-        
-        count = len(mentions)
-        total_mentions += count
-        latest = mentions[0]
-        
-        mentions_by_type.append({
-            "type": media_type,
-            "count": count,
-            "weight": media_weights[media_type],
-            "latest_mention": {
-                "title": latest["title"],
-                "url": latest["url"],
-                "date": latest["date"],
-                "accuracy_check": latest["accuracy_check"]
-            }
-        })
-
-    return {
-        "total_mentions": total_mentions,
-        "mentions_by_type": mentions_by_type,
-        "raw_mentions": all_mentions
-    }
-
-def calculate_eeat_scores(media_analysis: dict, wiki_presence: dict, uses_https: bool) -> dict:
-    """根據媒體分析、維基百科收錄和 HTTPS 使用情況計算 E-E-A-T 分數。"""
-    scores = {
-        "experience": 0, "expertise": 0, "authoritativeness": 0, "trustworthiness": 0
-    }
-    
-    # 1. Authoritativeness (權威性)
-    auth_score = 0
-    for item in media_analysis["mentions_by_type"]:
-        auth_score += item["count"] * item["weight"]
-    if wiki_presence["brand_found"]:
-        auth_score += 20
-    auth_score += len(wiki_presence["related_entities_found"]) * 10
-    scores["authoritativeness"] = min(100, int(auth_score))
-
-    # 2. Expertise (專業性)
-    industry_mentions = media_analysis["raw_mentions"].get("industry_news", [])
-    scores["expertise"] = min(100, len(industry_mentions) * 5)
-
-    # 3. Experience (經驗)
-    social_mentions = media_analysis["raw_mentions"].get("social_media", [])
-    video_mentions = media_analysis["raw_mentions"].get("video_sites", [])
-    experience_mentions = social_mentions + video_mentions
-    scores["experience"] = min(100, len(experience_mentions) * 2)
-
-    # 4. Trustworthiness (信任度)
-    trust_score = 0
-    if uses_https:
-        trust_score += 40
-    mainstream_mentions = media_analysis["raw_mentions"].get("mainstream_news", [])
-    if mainstream_mentions:
-        positive_or_neutral_count = sum(1 for m in mainstream_mentions if m["accuracy_check"] == "Correct")
-        negative_count = len(mainstream_mentions) - positive_or_neutral_count
-        
-        trust_score += positive_or_neutral_count * 5
-        trust_score -= negative_count * 15
-    
-    scores["trustworthiness"] = max(0, min(100, int(trust_score)))
-    
-    # 5. Overall Score (總分)
-    overall = sum(scores.values()) / len(scores)
-    scores["overall_score"] = int(overall)
-    
-    return scores
-
-def generate_recommendations(scores: dict, media_analysis: dict, wiki_presence: dict) -> list:
-    """根據分析結果生成改進建議。"""
-    recommendations = []
-    
-    # Experience 建議
-    if scores["experience"] < 50:
-        recommendations.append({
-            "category": "Experience",
-            "priority": "高",
-            "title": "增加社群媒體曝光",
-            "description": "建議加強在社群媒體平台的品牌曝光，包括 Facebook、Instagram、YouTube 等平台。",
-            "actions": ["建立官方社群帳號", "定期發布內容", "與網紅合作", "舉辦線上活動"]
-        })
-    
-    # Expertise 建議
-    if scores["expertise"] < 60:
-        recommendations.append({
-            "category": "Expertise",
-            "priority": "高",
-            "title": "提升產業專業形象",
-            "description": "需要增加在產業媒體的曝光度，建立專業權威形象。",
-            "actions": ["發布產業白皮書", "參與產業論壇", "與專業媒體合作", "建立技術部落格"]
-        })
-    
-    # Authoritativeness 建議
-    if scores["authoritativeness"] < 70:
-        recommendations.append({
-            "category": "Authoritativeness",
-            "priority": "中",
-            "title": "建立維基百科頁面",
-            "description": "建議為品牌建立維基百科頁面，提升權威性。",
-            "actions": ["準備完整的品牌資料", "遵循維基百科編輯規範", "定期更新內容"]
-        })
-    
-    # Trustworthiness 建議
-    if scores["trustworthiness"] < 80:
-        recommendations.append({
-            "category": "Trustworthiness",
-            "priority": "高",
-            "title": "改善客戶服務",
-            "description": "根據負面評論，建議改善客戶服務和產品品質。",
-            "actions": ["建立 24/7 客服系統", "改善產品品質", "增加客戶回饋機制", "建立危機處理流程"]
-        })
-    
-    return recommendations
-
-def create_radar_chart(scores: dict):
-    """建立雷達圖。"""
-    categories = ['Experience', 'Expertise', 'Authoritativeness', 'Trustworthiness']
-    values = [scores['experience'], scores['expertise'], scores['authoritativeness'], scores['trustworthiness']]
-    
-    fig = go.Figure()
-    
-    fig.add_trace(go.Scatterpolar(
-        r=values,
-        theta=categories,
-        fill='toself',
-        name='E-E-A-T 分數',
-        line_color='rgb(102, 126, 234)',
-        fillcolor='rgba(102, 126, 234, 0.3)'
-    ))
-    
-    fig.update_layout(
-        polar=dict(
-            radialaxis=dict(
-                visible=True,
-                range=[0, 100]
-            )),
-        showlegend=False,
-        title="E-E-A-T 雷達圖分析",
-        height=400
-    )
-    
-    return fig
-
-def create_bar_chart(media_analysis: dict):
-    """建立媒體提及長條圖。"""
-    media_types = []
-    counts = []
-    
-    for item in media_analysis["mentions_by_type"]:
-        media_types.append(item["type"])
-        counts.append(item["count"])
-    
-    df = pd.DataFrame({
-        '媒體類型': media_types,
-        '提及次數': counts
-    })
-    
-    fig = px.bar(df, x='媒體類型', y='提及次數',
-                 title="各媒體類型提及次數",
-                 color='提及次數',
-                 color_continuous_scale='Blues')
-    
-    fig.update_layout(height=400)
-    return fig
-
-def run_eeat_analysis(config_data: dict, module1_output: dict):
-    """執行 E-E-A-T 分析的主函式。"""
-    brand_name = config_data["brand_name"]
-    related_entities = config_data["related_entities"]
-    media_weights = config_data["media_weights"]
-    official_info = config_data["official_info"]
-    user_agent = "SIE-Diagnostic-Tool/1.0 (contact@example.com)"
-    
-    uses_https = module1_output.get("site_analysis", {}).get("uses_https", False)
-
-    # 步驟 1: 檢查維基百科收錄
-    wiki_presence = check_wikipedia_presence([brand_name] + related_entities, user_agent)
-    
-    # 步驟 2: 分析媒體提及
-    media_analysis = analyze_media_mentions(brand_name, related_entities, media_weights, official_info)
-    
-    # 步驟 3: 計算 E-E-A-T 分數
-    eeat_scores = calculate_eeat_scores(media_analysis, wiki_presence, uses_https)
-    
-    # 步驟 4: 生成建議
-    recommendations = generate_recommendations(eeat_scores, media_analysis, wiki_presence)
-    
-    # 步驟 5: 組合最終結果
-    result = {
-        "eeat_scores": eeat_scores,
-        "media_analysis": media_analysis,
-        "wiki_presence": wiki_presence,
-        "uses_https": uses_https,
-        "recommendations": recommendations
-    }
-    
-    return result
-
-# 主應用程式
 def main():
-    # 標題區域
-    st.markdown("""
-    <div class="main-header">
-        <h1>🔍 E-E-A-T 分析工具</h1>
-        <p>專業的品牌權威性、專業性、經驗與信任度分析平台</p>
-    </div>
-    """, unsafe_allow_html=True)
+    """主應用程式"""
     
-    # 側邊欄
+    # 側邊欄配置
     with st.sidebar:
-        st.header("⚙️ 設定")
+        st.title("🚀 SIE 平台")
         st.markdown("---")
         
-        # 基本資訊
-        brand_name = st.text_input("品牌名稱", "台灣品牌A")
-        related_entities = st.text_area("相關實體（每行一個）", "產品B\n集團C").splitlines()
-        official_info = st.text_area("官方資訊", "台灣品牌A是台灣領先的科技公司，主力產品為產品B。")
-        
-        st.markdown("---")
-        
-        # 媒體權重設定
-        st.subheader("📊 媒體權重設定")
-        st.caption("數字越大代表該媒體類型越重要")
-        
-        industry_news = st.slider("產業新聞", 0, 20, 10)
-        mainstream_news = st.slider("主流新聞", 0, 20, 8)
-        social_media = st.slider("社群媒體", 0, 20, 5)
-        video_sites = st.slider("影音網站", 0, 20, 5)
-        ecommerce_retail = st.slider("電商零售", 0, 20, 2)
+        # API 金鑰設定
+        gemini_api_key = st.text_input(
+            "🔑 Gemini API 金鑰",
+            type="password",
+            help="輸入您的 Gemini API 金鑰以啟用 AI 建議功能"
+        )
         
         st.markdown("---")
         
-        # 技術設定
-        st.subheader("🔧 技術設定")
-        uses_https = st.checkbox("網站支援 HTTPS", value=True)
+        # 頁面選擇
+        page = st.selectbox(
+            "📄 選擇分析模組",
+            [
+                "🏠 首頁",
+                "🔧 模組 1: 網站 AI 就緒度分析",
+                "📊 模組 2: E-E-A-T 基準分析",
+                "🎯 完整 E-E-A-T 分析",
+                "📈 分析報告"
+            ]
+        )
         
         st.markdown("---")
-        
-        # 分析按鈕
-        if st.button("🚀 開始分析", type="primary", use_container_width=True):
-            st.session_state.analyze = True
+        st.markdown("### 📋 使用說明")
+        st.markdown("""
+        1. **模組 1**: 分析網站技術健康度與 AI 就緒度
+        2. **模組 2**: 動態 E-E-A-T 評估與競爭基準分析
+        3. **完整分析**: 傳統 E-E-A-T 分析
+        4. **報告**: 查看歷史分析結果
+        """)
     
-    # 主要內容區域
-    if 'analyze' in st.session_state and st.session_state.analyze:
-        with st.spinner("🔍 正在進行深度分析..."):
-            config_data = {
-                "brand_name": brand_name,
-                "related_entities": [e for e in related_entities if e.strip()],
-                "media_weights": {
-                    "industry_news": industry_news,
-                    "mainstream_news": mainstream_news,
-                    "social_media": social_media,
-                    "video_sites": video_sites,
-                    "ecommerce_retail": ecommerce_retail
-                },
-                "official_info": official_info
-            }
-            module1_output = {"site_analysis": {"uses_https": uses_https}}
-            
-            result = run_eeat_analysis(config_data, module1_output)
+    # 主內容區域
+    if page == "🏠 首頁":
+        show_homepage()
+    elif page == "🔧 模組 1: 網站 AI 就緒度分析":
+        show_module1_page(gemini_api_key)
+    elif page == "📊 模組 2: E-E-A-T 基準分析":
+        show_module2_page(gemini_api_key)
+    elif page == "🎯 完整 E-E-A-T 分析":
+        show_full_eeat_page(gemini_api_key)
+    elif page == "📈 分析報告":
+        show_reports_page()
+
+def show_homepage():
+    """顯示首頁"""
+    st.markdown('<div class="main-header">', unsafe_allow_html=True)
+    st.title("🚀 SIE 平台")
+    st.subtitle("智能搜尋引擎優化分析系統")
+    st.markdown("</div>", unsafe_allow_html=True)
+    
+    # 功能介紹
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("### 🔧 模組 1: 網站 AI 就緒度分析")
+        st.markdown("""
+        - ✅ robots.txt 與 LLM 遵從性檢查
+        - ✅ sitemap.xml 驗證
+        - ✅ llms.txt 前瞻性指標
+        - ✅ HTTPS 安全性檢查
+        - ✅ 內部連結結構分析
+        - ✅ Schema.org 結構化資料檢測
+        - ✅ 內容可讀性評估
+        - ✅ AI 技術建議生成
+        """)
+    
+    with col2:
+        st.markdown("### 📊 模組 2: E-E-A-T 基準分析")
+        st.markdown("""
+        - 🤖 AI 領導者識別與分析
+        - 📊 動態媒體權重評估
+        - 🏆 競爭對手基準分析
+        - 📈 趨勢追蹤與預測
+        - 🎯 策略建議生成
+        - 📱 社交媒體權威分析
+        - 📰 媒體提及監控
+        - 🔄 市場機會識別
+        """)
+    
+    st.markdown("---")
+    
+    # 統計資訊
+    st.markdown("### 📊 平台統計")
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("分析次數", "1,234", "+12%")
+    
+    with col2:
+        st.metric("網站分析", "567", "+8%")
+    
+    with col3:
+        st.metric("競爭對手", "89", "+15%")
+    
+    with col4:
+        st.metric("建議生成", "2,345", "+20%")
+
+def show_module1_page(gemini_api_key: Optional[str]):
+    """顯示模組 1 頁面"""
+    st.title("🔧 模組 1: 網站 AI 就緒度分析")
+    st.markdown("分析網站的技術健康度與 AI 就緒度")
+    
+    # 輸入區域
+    with st.form("module1_form"):
+        website_url = st.text_input(
+            "🌐 網站 URL",
+            placeholder="例如: example.com 或 https://example.com",
+            help="輸入要分析的網站 URL"
+        )
         
-        # 顯示結果
-        st.success("✅ 分析完成！")
+        submitted = st.form_submit_button("🚀 開始分析", type="primary")
+    
+    if submitted and website_url:
+        with st.spinner("🔍 正在分析網站 AI 就緒度..."):
+            try:
+                # 執行分析
+                result = run_website_analysis(website_url, gemini_api_key)
+                
+                if "error" in result:
+                    st.error(f"分析失敗: {result['error']}")
+                    return
+                
+                analysis_data = result.get("technical_seo_ai_readiness", {})
+                
+                # 顯示分析結果
+                display_module1_results(analysis_data, website_url)
+                
+                # 儲存結果
+                save_analysis_result("module1", website_url, result)
+                
+            except Exception as e:
+                st.error(f"分析過程中發生錯誤: {str(e)}")
+
+def display_module1_results(analysis_data: Dict, website_url: str):
+    """顯示模組 1 分析結果"""
+    st.success(f"✅ 分析完成: {website_url}")
+    
+    # 總體評分
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        root_files = analysis_data.get("root_files", {})
+        root_score = calculate_root_files_score(root_files)
+        st.metric("根檔案評分", f"{root_score}/100", "✅")
+    
+    with col2:
+        architecture = analysis_data.get("architecture_signals", {})
+        arch_score = calculate_architecture_score(architecture)
+        st.metric("架構評分", f"{arch_score}/100", "🏗️")
+    
+    with col3:
+        llm_friendliness = analysis_data.get("llm_friendliness", {})
+        llm_score = calculate_llm_friendliness_score(llm_friendliness)
+        st.metric("LLM 友善度", f"{llm_score}/100", "🤖")
+    
+    st.markdown("---")
+    
+    # 詳細分析結果
+    tab1, tab2, tab3, tab4 = st.tabs(["📁 根檔案", "🏗️ 架構", "🤖 LLM 友善度", "💡 建議"])
+    
+    with tab1:
+        display_root_files_analysis(analysis_data.get("root_files", {}))
+    
+    with tab2:
+        display_architecture_analysis(analysis_data.get("architecture_signals", {}))
+    
+    with tab3:
+        display_llm_friendliness_analysis(analysis_data.get("llm_friendliness", {}))
+    
+    with tab4:
+        display_recommendations(analysis_data.get("actionable_recommendations", []))
+
+def show_module2_page(gemini_api_key: Optional[str]):
+    """顯示模組 2 頁面"""
+    st.title("📊 模組 2: E-E-A-T 基準分析")
+    st.markdown("動態 E-E-A-T 評估與競爭基準分析")
+    
+    # 輸入區域
+    with st.form("module2_form"):
+        target_website = st.text_input(
+            "🎯 目標網站",
+            placeholder="例如: example.com",
+            help="輸入要分析的主要網站"
+        )
         
-        # E-E-A-T 分數卡片
-        st.subheader("🎯 E-E-A-T 評分結果")
-        scores = result["eeat_scores"]
+        competitors = st.text_area(
+            "🏆 競爭對手 (每行一個)",
+            placeholder="competitor1.com\ncompetitor2.com\ncompetitor3.com",
+            help="輸入競爭對手網站，每行一個"
+        )
         
-        col1, col2, col3, col4, col5 = st.columns(5)
+        submitted = st.form_submit_button("🚀 開始分析", type="primary")
+    
+    if submitted and target_website:
+        # 處理競爭對手列表
+        competitor_list = []
+        if competitors:
+            competitor_list = [comp.strip() for comp in competitors.split('\n') if comp.strip()]
         
-        with col1:
-            score_class = "score-high" if scores['experience'] >= 70 else "score-medium" if scores['experience'] >= 40 else "score-low"
-            st.markdown(f"""
-            <div class="metric-card">
-                <h3>經驗 (Experience)</h3>
-                <h2 class="{score_class}">{scores['experience']}/100</h2>
-            </div>
-            """, unsafe_allow_html=True)
+        with st.spinner("🔍 正在執行 E-E-A-T 基準分析..."):
+            try:
+                # 執行分析
+                result = run_eeat_benchmarking(target_website, competitor_list, gemini_api_key)
+                
+                if "error" in result:
+                    st.error(f"分析失敗: {result['error']}")
+                    return
+                
+                analysis_data = result.get("eeat_benchmarking", {})
+                
+                # 顯示分析結果
+                display_module2_results(analysis_data, target_website)
+                
+                # 儲存結果
+                save_analysis_result("module2", target_website, result)
+                
+            except Exception as e:
+                st.error(f"分析過程中發生錯誤: {str(e)}")
+
+def display_module2_results(analysis_data: Dict, target_website: str):
+    """顯示模組 2 分析結果"""
+    st.success(f"✅ 分析完成: {target_website}")
+    
+    # 總體評分
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        ai_leader = analysis_data.get("ai_leader_analysis", {})
+        ai_score = ai_leader.get("ai_leader_score", 0)
+        st.metric("AI 領導者分數", f"{ai_score}/100", "🤖")
+    
+    with col2:
+        media_weights = analysis_data.get("dynamic_media_weights", {})
+        media_score = media_weights.get("media_mentions", {}).get("media_coverage_score", 0)
+        st.metric("媒體覆蓋分數", f"{media_score:.1f}/100", "📰")
+    
+    with col3:
+        social_score = media_weights.get("social_media_presence", {}).get("social_authority_score", 0)
+        st.metric("社交媒體權威", f"{social_score:.1f}/100", "📱")
+    
+    with col4:
+        competitor_bench = analysis_data.get("competitor_benchmarking", {})
+        market_position = competitor_bench.get("market_position", "unknown")
+        st.metric("市場地位", market_position.title(), "🏆")
+    
+    st.markdown("---")
+    
+    # 詳細分析結果
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["🤖 AI 領導者", "📊 媒體權重", "🏆 競爭分析", "📈 趨勢", "💡 策略"])
+    
+    with tab1:
+        display_ai_leader_analysis(analysis_data.get("ai_leader_analysis", {}))
+    
+    with tab2:
+        display_media_weights_analysis(analysis_data.get("dynamic_media_weights", {}))
+    
+    with tab3:
+        display_competitor_analysis(analysis_data.get("competitor_benchmarking", {}))
+    
+    with tab4:
+        display_trend_analysis(analysis_data.get("trend_analysis", {}))
+    
+    with tab5:
+        display_strategic_recommendations(analysis_data.get("strategic_recommendations", []))
+
+def show_full_eeat_page(gemini_api_key: Optional[str]):
+    """顯示完整 E-E-A-T 分析頁面"""
+    st.title("🎯 完整 E-E-A-T 分析")
+    st.markdown("傳統 E-E-A-T (Experience, Expertise, Authoritativeness, Trustworthiness) 分析")
+    
+    # 輸入區域
+    with st.form("full_eeat_form"):
+        website_url = st.text_input(
+            "🌐 網站 URL",
+            placeholder="例如: example.com",
+            help="輸入要分析的網站 URL"
+        )
         
-        with col2:
-            score_class = "score-high" if scores['expertise'] >= 70 else "score-medium" if scores['expertise'] >= 40 else "score-low"
-            st.markdown(f"""
-            <div class="metric-card">
-                <h3>專業 (Expertise)</h3>
-                <h2 class="{score_class}">{scores['expertise']}/100</h2>
-            </div>
-            """, unsafe_allow_html=True)
+        company_name = st.text_input(
+            "🏢 公司名稱",
+            placeholder="例如: Example Corp",
+            help="輸入公司或組織名稱"
+        )
         
-        with col3:
-            score_class = "score-high" if scores['authoritativeness'] >= 70 else "score-medium" if scores['authoritativeness'] >= 40 else "score-low"
-            st.markdown(f"""
-            <div class="metric-card">
-                <h3>權威 (Authoritativeness)</h3>
-                <h2 class="{score_class}">{scores['authoritativeness']}/100</h2>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col4:
-            score_class = "score-high" if scores['trustworthiness'] >= 70 else "score-medium" if scores['trustworthiness'] >= 40 else "score-low"
-            st.markdown(f"""
-            <div class="metric-card">
-                <h3>信任 (Trustworthiness)</h3>
-                <h2 class="{score_class}">{scores['trustworthiness']}/100</h2>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col5:
-            score_class = "score-high" if scores['overall_score'] >= 70 else "score-medium" if scores['overall_score'] >= 40 else "score-low"
-            st.markdown(f"""
-            <div class="metric-card">
-                <h3>總分 (Overall)</h3>
-                <h2 class="{score_class}">{scores['overall_score']}/100</h2>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        # 視覺化圖表
-        st.subheader("📊 視覺化分析")
+        submitted = st.form_submit_button("🚀 開始分析", type="primary")
+    
+    if submitted and website_url and company_name:
+        with st.spinner("🔍 正在執行完整 E-E-A-T 分析..."):
+            try:
+                # 執行分析
+                result = run_eeat_analysis(website_url, company_name, gemini_api_key)
+                
+                if "error" in result:
+                    st.error(f"分析失敗: {result['error']}")
+                    return
+                
+                # 顯示分析結果
+                display_full_eeat_results(result, website_url, company_name)
+                
+                # 儲存結果
+                save_analysis_result("full_eeat", website_url, result)
+                
+            except Exception as e:
+                st.error(f"分析過程中發生錯誤: {str(e)}")
+
+def display_full_eeat_results(result: Dict, website_url: str, company_name: str):
+    """顯示完整 E-E-A-T 分析結果"""
+    st.success(f"✅ 分析完成: {company_name} ({website_url})")
+    
+    # 總體 E-E-A-T 分數
+    eeat_scores = result.get("eeat_scores", {})
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        experience_score = eeat_scores.get("experience", 0)
+        st.metric("Experience", f"{experience_score}/100", "📚")
+    
+    with col2:
+        expertise_score = eeat_scores.get("expertise", 0)
+        st.metric("Expertise", f"{expertise_score}/100", "🎓")
+    
+    with col3:
+        authoritativeness_score = eeat_scores.get("authoritativeness", 0)
+        st.metric("Authoritativeness", f"{authoritativeness_score}/100", "🏆")
+    
+    with col4:
+        trustworthiness_score = eeat_scores.get("trustworthiness", 0)
+        st.metric("Trustworthiness", f"{trustworthiness_score}/100", "✅")
+    
+    # 顯示詳細分析結果
+    display_eeat_detailed_results(result)
+
+def show_reports_page():
+    """顯示分析報告頁面"""
+    st.title("📈 分析報告")
+    st.markdown("查看歷史分析結果與趨勢")
+    
+    # 載入歷史報告
+    reports = load_analysis_reports()
+    
+    if not reports:
+        st.info("📝 尚無分析報告，請先執行分析")
+        return
+    
+    # 報告列表
+    for report in reports:
+        with st.expander(f"📊 {report['timestamp']} - {report['website']} ({report['module']})"):
+            st.json(report['result'])
+
+# 輔助函數
+def calculate_root_files_score(root_files: Dict) -> int:
+    """計算根檔案評分"""
+    score = 0
+    if root_files.get("has_robots_txt"):
+        score += 25
+    if root_files.get("robots_allows_ai_bots"):
+        score += 25
+    if root_files.get("has_sitemap_xml"):
+        score += 25
+    if root_files.get("sitemap_is_valid"):
+        score += 15
+    if root_files.get("has_llms_txt"):
+        score += 10
+    return score
+
+def calculate_architecture_score(architecture: Dict) -> int:
+    """計算架構評分"""
+    score = 0
+    if architecture.get("uses_https"):
+        score += 30
+    if architecture.get("internal_link_structure") == "good":
+        score += 40
+    elif architecture.get("internal_link_structure") == "fair":
+        score += 20
+    score += min(architecture.get("estimated_authority_links", 0) * 2, 30)
+    return score
+
+def calculate_llm_friendliness_score(llm_friendliness: Dict) -> int:
+    """計算 LLM 友善度評分"""
+    score = 0
+    score += len(llm_friendliness.get("schema_detected", [])) * 10
+    if llm_friendliness.get("content_readability") == "good":
+        score += 40
+    elif llm_friendliness.get("content_readability") == "fair":
+        score += 20
+    score += min(llm_friendliness.get("structured_data_score", 0) * 5, 30)
+    return min(score, 100)
+
+def display_root_files_analysis(root_files: Dict):
+    """顯示根檔案分析結果"""
+    st.subheader("📁 根檔案分析")
+    
+    # robots.txt
+    if root_files.get("has_robots_txt"):
+        st.success("✅ robots.txt 存在")
+        if root_files.get("robots_allows_ai_bots"):
+            st.success("✅ 允許 AI bots 存取")
+        else:
+            st.warning("⚠️ 封鎖了某些 AI bots")
+    else:
+        st.error("❌ robots.txt 不存在")
+    
+    # sitemap.xml
+    if root_files.get("has_sitemap_xml"):
+        st.success("✅ sitemap.xml 存在")
+        if root_files.get("sitemap_is_valid"):
+            st.success("✅ sitemap.xml 格式正確")
+        else:
+            st.warning("⚠️ sitemap.xml 格式可能有問題")
+    else:
+        st.error("❌ sitemap.xml 不存在")
+    
+    # llms.txt
+    if root_files.get("has_llms_txt"):
+        st.success("✅ llms.txt 存在 (前瞻性指標)")
+        st.text_area("llms.txt 內容", root_files.get("llms_txt_content", ""), height=100)
+    else:
+        st.info("ℹ️ llms.txt 不存在 (這是正常的，目前仍是新興標準)")
+
+def display_architecture_analysis(architecture: Dict):
+    """顯示架構分析結果"""
+    st.subheader("🏗️ 架構分析")
+    
+    # HTTPS
+    if architecture.get("uses_https"):
+        st.success("✅ 使用 HTTPS")
+    else:
+        st.error("❌ 未使用 HTTPS")
+    
+    # 內部連結結構
+    link_structure = architecture.get("internal_link_structure", "unknown")
+    if link_structure == "good":
+        st.success("✅ 內部連結結構良好")
+    elif link_structure == "fair":
+        st.info("ℹ️ 內部連結結構一般")
+    else:
+        st.warning("⚠️ 內部連結結構較差")
+    
+    # 外部連結
+    external_links = architecture.get("external_links_count", 0)
+    st.metric("外部連結數量", external_links)
+
+def display_llm_friendliness_analysis(llm_friendliness: Dict):
+    """顯示 LLM 友善度分析結果"""
+    st.subheader("🤖 LLM 友善度分析")
+    
+    # 結構化資料
+    schema_types = llm_friendliness.get("schema_detected", [])
+    if schema_types:
+        st.success(f"✅ 發現結構化資料: {', '.join(schema_types)}")
+    else:
+        st.warning("⚠️ 未發現結構化資料")
+    
+    # 內容可讀性
+    readability = llm_friendliness.get("content_readability", "unknown")
+    if readability == "good":
+        st.success("✅ 內容結構良好")
+    elif readability == "fair":
+        st.info("ℹ️ 內容結構一般")
+    else:
+        st.warning("⚠️ 內容結構較差")
+    
+    # PageSpeed 分數
+    pagespeed = llm_friendliness.get("pagespeed_scores", {})
+    if pagespeed:
         col1, col2 = st.columns(2)
-        
         with col1:
-            radar_fig = create_radar_chart(scores)
-            st.plotly_chart(radar_fig, use_container_width=True)
-        
+            mobile_perf = pagespeed.get("mobile", {}).get("performance", 0)
+            st.metric("Mobile Performance", f"{mobile_perf}/100")
         with col2:
-            bar_fig = create_bar_chart(result["media_analysis"])
-            st.plotly_chart(bar_fig, use_container_width=True)
+            desktop_perf = pagespeed.get("desktop", {}).get("performance", 0)
+            st.metric("Desktop Performance", f"{desktop_perf}/100")
+
+def display_recommendations(recommendations: List[Dict]):
+    """顯示改善建議"""
+    st.subheader("💡 改善建議")
+    
+    if not recommendations:
+        st.info("🎉 沒有發現需要改善的問題！")
+        return
+    
+    for i, rec in enumerate(recommendations, 1):
+        priority_color = {
+            "High": "🔴",
+            "Medium": "🟡",
+            "Low": "🟢"
+        }.get(rec.get("priority", "Medium"), "🟡")
         
-        # 詳細分析報告
-        st.subheader("📋 詳細分析報告")
+        st.markdown(f"""
+        ### {priority_color} {rec.get("issue", "Unknown Issue")}
+        **建議**: {rec.get("recommendation", "No recommendation")}
+        **優先級**: {rec.get("priority", "Medium")}
+        **類別**: {rec.get("category", "General")}
+        """)
+
+def display_ai_leader_analysis(ai_leader: Dict):
+    """顯示 AI 領導者分析"""
+    st.subheader("🤖 AI 領導者分析")
+    
+    # AI 領導者分數
+    ai_score = ai_leader.get("ai_leader_score", 0)
+    st.metric("AI 領導者分數", f"{ai_score}/100")
+    
+    # AI 技術指標
+    tech_indicators = ai_leader.get("ai_technology_indicators", [])
+    if tech_indicators:
+        st.success(f"✅ 發現 AI 技術指標: {', '.join(tech_indicators)}")
+    else:
+        st.warning("⚠️ 未發現 AI 技術指標")
+    
+    # AI 內容信號
+    content_signals = ai_leader.get("ai_content_signals", [])
+    if content_signals:
+        st.success(f"✅ 發現 AI 內容信號: {', '.join(content_signals)}")
+    else:
+        st.info("ℹ️ 未發現 AI 相關內容")
+    
+    # AI 領導地位
+    position = ai_leader.get("ai_leadership_position", "unknown")
+    position_emoji = {
+        "leader": "🏆",
+        "emerging": "📈",
+        "follower": "📊",
+        "laggard": "⚠️"
+    }.get(position, "❓")
+    
+    st.markdown(f"**AI 領導地位**: {position_emoji} {position.title()}")
+
+def display_media_weights_analysis(media_weights: Dict):
+    """顯示媒體權重分析"""
+    st.subheader("📊 媒體權重分析")
+    
+    # 媒體提及
+    mentions = media_weights.get("media_mentions", {})
+    media_score = mentions.get("media_coverage_score", 0)
+    st.metric("媒體覆蓋分數", f"{media_score:.1f}/100")
+    
+    recent_mentions = mentions.get("recent_mentions", [])
+    if recent_mentions:
+        st.markdown("### 📰 最近媒體提及")
+        for mention in recent_mentions:
+            sentiment_emoji = "✅" if mention.get("sentiment") == "positive" else "⚠️"
+            st.markdown(f"""
+            {sentiment_emoji} **{mention.get('source', 'Unknown')}** - {mention.get('date', 'Unknown')}
+            {mention.get('title', 'No title')}
+            """)
+    
+    # 社交媒體
+    social = media_weights.get("social_media_presence", {})
+    social_score = social.get("social_authority_score", 0)
+    st.metric("社交媒體權威分數", f"{social_score:.1f}/100")
+    
+    platforms = social.get("platforms", [])
+    if platforms:
+        st.success(f"✅ 發現社交媒體平台: {', '.join(platforms)}")
+    else:
+        st.warning("⚠️ 未發現社交媒體連結")
+
+def display_competitor_analysis(competitor_bench: Dict):
+    """顯示競爭對手分析"""
+    st.subheader("🏆 競爭對手分析")
+    
+    # 市場地位
+    market_position = competitor_bench.get("market_position", "unknown")
+    position_emoji = {
+        "leader": "🏆",
+        "strong": "💪",
+        "average": "📊",
+        "laggard": "⚠️"
+    }.get(market_position, "❓")
+    
+    st.markdown(f"**市場地位**: {position_emoji} {market_position.title()}")
+    
+    # 競爭優勢
+    advantages = competitor_bench.get("competitive_advantages", [])
+    if advantages:
+        st.success("✅ 競爭優勢:")
+        for advantage in advantages:
+            st.markdown(f"- {advantage}")
+    
+    # 改善機會
+    opportunities = competitor_bench.get("improvement_opportunities", [])
+    if opportunities:
+        st.warning("⚠️ 改善機會:")
+        for opportunity in opportunities:
+            st.markdown(f"- {opportunity}")
+
+def display_trend_analysis(trend_analysis: Dict):
+    """顯示趨勢分析"""
+    st.subheader("📈 趨勢分析")
+    
+    # 當前趨勢
+    current_trends = trend_analysis.get("current_trends", [])
+    if current_trends:
+        st.markdown("### 🔥 當前趨勢")
+        for trend in current_trends:
+            st.markdown(f"- {trend}")
+    
+    # 預測成長
+    predictions = trend_analysis.get("predicted_growth", {})
+    if predictions:
+        st.markdown("### 📊 預測成長")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("AI 採用率", f"{predictions.get('ai_adoption_rate', 0):.1f}%")
+            st.metric("內容消費成長", f"{predictions.get('content_consumption_growth', 0):.1f}%")
+        with col2:
+            st.metric("社交參與度增加", f"{predictions.get('social_engagement_increase', 0):.1f}%")
+            st.metric("市場份額成長", f"{predictions.get('market_share_growth', 0):.1f}%")
+
+def display_strategic_recommendations(recommendations: List[Dict]):
+    """顯示策略建議"""
+    st.subheader("💡 策略建議")
+    
+    if not recommendations:
+        st.info("🎉 沒有策略建議")
+        return
+    
+    for i, rec in enumerate(recommendations, 1):
+        priority_color = {
+            "High": "🔴",
+            "Medium": "🟡",
+            "Low": "🟢"
+        }.get(rec.get("priority", "Medium"), "🟡")
         
-        # 維基百科檢查結果
-        with st.expander("🌐 維基百科收錄狀況", expanded=True):
-            wiki_presence = result["wiki_presence"]
-            if wiki_presence["brand_found"]:
-                st.success(f"✅ 品牌 '{brand_name}' 在維基百科有收錄")
-            else:
-                st.warning(f"⚠️ 品牌 '{brand_name}' 在維基百科無收錄")
-            
-            if wiki_presence["related_entities_found"]:
-                st.info(f"📚 相關實體收錄：{', '.join(wiki_presence['related_entities_found'])}")
-            else:
-                st.info("📚 相關實體均無維基百科收錄")
+        st.markdown(f"""
+        ### {priority_color} {rec.get("strategy", "Unknown Strategy")}
+        **描述**: {rec.get("description", "No description")}
+        **優先級**: {rec.get("priority", "Medium")}
+        **時間線**: {rec.get("timeline", "Unknown")}
+        **預期影響**: {rec.get("expected_impact", "Unknown")}
         
-        # 媒體提及分析
-        with st.expander("📰 媒體提及分析", expanded=True):
-            media_analysis = result["media_analysis"]
-            st.write(f"**總提及次數：{media_analysis['total_mentions']}**")
-            
-            for item in media_analysis["mentions_by_type"]:
-                if item["count"] > 0:
-                    st.write(f"- **{item['type']}**: {item['count']} 次提及")
-                    if item["latest_mention"]:
-                        st.caption(f"  最新：{item['latest_mention']['title']}")
+        **實施步驟**:
+        """)
         
-        # 改進建議
-        if result["recommendations"]:
-            st.subheader("💡 改進建議")
-            for i, rec in enumerate(result["recommendations"], 1):
-                with st.expander(f"{i}. {rec['title']} ({rec['priority']}優先級)", expanded=True):
-                    st.write(f"**類別：{rec['category']}**")
-                    st.write(rec['description'])
-                    st.write("**建議行動：**")
-                    for action in rec['actions']:
-                        st.write(f"- {action}")
-        
-        # 原始資料
-        with st.expander("🔍 原始分析資料", expanded=False):
-            st.json(result)
-        
-        st.markdown("---")
-        st.caption("本工具由 Streamlit 製作，程式碼已開源於 GitHub。")
+        steps = rec.get("implementation_steps", [])
+        for step in steps:
+            st.markdown(f"- {step}")
+
+def display_eeat_detailed_results(result: Dict):
+    """顯示詳細 E-E-A-T 結果"""
+    # 這裡可以添加更詳細的 E-E-A-T 結果顯示
+    st.json(result)
+
+def save_analysis_result(module: str, website: str, result: Dict):
+    """儲存分析結果"""
+    # 這裡可以實現結果儲存邏輯
+    pass
+
+def load_analysis_reports():
+    """載入分析報告"""
+    # 這裡可以實現報告載入邏輯
+    return []
 
 if __name__ == "__main__":
     main() 
