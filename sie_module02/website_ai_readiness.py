@@ -595,7 +595,7 @@ class WebsiteAIReadinessAnalyzer:
         if not root_files["has_robots_txt"]:
             recommendations.append({
                 "issue": "缺少 robots.txt 檔案",
-                "recommendation": "請在網站根目錄建立 robots.txt 檔案，內容包含：User-agent: * 和 Allow: /，以正確引導搜尋引擎和 AI 機器人。",
+                "recommendation": "請在網站根目錄建立 robots.txt 檔案，這是網站與搜尋引擎和 AI 機器人溝通的重要檔案。\n\n建議內容：\n```\nUser-agent: *\nAllow: /\nUser-agent: Google-Extended\nAllow: /\nUser-agent: GPTBot\nAllow: /\nUser-agent: anthropic-ai\nAllow: /\n\nSitemap: https://yourdomain.com/sitemap.xml\n```\n\n這將確保所有搜尋引擎和 AI 機器人都能正確存取您的網站內容。",
                 "priority": "High",
                 "category": "Root Files"
             })
@@ -611,7 +611,7 @@ class WebsiteAIReadinessAnalyzer:
         if not root_files["has_sitemap_xml"]:
             recommendations.append({
                 "issue": "缺少 sitemap.xml 檔案",
-                "recommendation": "請建立 sitemap.xml 檔案，列出所有重要頁面的 URL，幫助搜尋引擎和 AI 更好地理解網站結構。",
+                "recommendation": "請建立 sitemap.xml 檔案，這是幫助搜尋引擎和 AI 理解網站結構的重要檔案。\n\n建議內容結構：\n```xml\n<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n  <url>\n    <loc>https://yourdomain.com/</loc>\n    <lastmod>2024-01-01</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>1.0</priority>\n  </url>\n  <url>\n    <loc>https://yourdomain.com/products</loc>\n    <lastmod>2024-01-01</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.8</priority>\n  </url>\n</urlset>\n```\n\n包含所有重要頁面，並定期更新以反映最新內容。",
                 "priority": "Medium",
                 "category": "Root Files"
             })
@@ -645,7 +645,7 @@ class WebsiteAIReadinessAnalyzer:
         if not llm_friendliness["schema_detected"]:
             recommendations.append({
                 "issue": "缺少結構化資料",
-                "recommendation": "請為網站添加 Schema.org 結構化資料，包括產品、組織、文章等標記，幫助 AI 更好地理解內容語義。",
+                "recommendation": "請為網站添加 Schema.org 結構化資料，這對 AI 理解內容語義至關重要。建議實施以下標記：\n\n1. **組織標記 (Organization)**：包含公司名稱、logo、聯絡資訊\n2. **產品標記 (Product)**：包含產品名稱、描述、價格、規格\n3. **文章標記 (Article)**：包含標題、作者、發布日期\n4. **FAQ 標記 (FAQPage)**：包含問題和答案\n5. **麵包屑標記 (BreadcrumbList)**：顯示頁面層級結構\n\n實施方式：在 HTML 的 <head> 區塊中添加 <script type=\"application/ld+json\"> 標籤，包含結構化資料 JSON。這將大幅提升 AI 對網站內容的理解能力。",
                 "priority": "Medium",
                 "category": "LLM Friendliness"
             })
@@ -661,7 +661,7 @@ class WebsiteAIReadinessAnalyzer:
         if not llm_friendliness["semantic_html"]:
             recommendations.append({
                 "issue": "未使用語義化 HTML",
-                "recommendation": "請使用語義化 HTML 標籤（article, section, nav, header, footer 等），幫助 AI 理解內容結構和頁面佈局。",
+                "recommendation": "請使用語義化 HTML 標籤，這對 AI 理解內容結構至關重要。\n\n建議使用的標籤：\n- **<header>**：頁面或區塊的標題區域\n- **<nav>**：導航選單\n- **<main>**：主要內容區域\n- **<article>**：獨立的文章或產品內容\n- **<section>**：內容區塊\n- **<aside>**：側邊欄或相關內容\n- **<footer>**：頁面底部\n\n範例結構：\n```html\n<header>\n  <nav>導航選單</nav>\n</header>\n<main>\n  <article>\n    <section>產品介紹</section>\n    <section>技術規格</section>\n  </article>\n  <aside>相關產品</aside>\n</main>\n<footer>聯絡資訊</footer>\n```\n\n這將大幅提升 AI 對網站結構的理解能力。",
                 "priority": "Medium",
                 "category": "LLM Friendliness"
             })
