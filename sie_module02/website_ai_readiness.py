@@ -31,7 +31,7 @@ class WebsiteAIReadinessAnalyzer:
         else:
             self.gemini_model = None
     
-    def analyze_website(self, website_url: str) -> Dict:
+    def analyze_website(self, website_url: str, product_category: str = None) -> Dict:
         """分析網站的 AI 就緒度與技術健康度"""
         if not website_url.startswith(('http://', 'https://')):
             website_url = 'https://' + website_url
@@ -48,9 +48,20 @@ class WebsiteAIReadinessAnalyzer:
             # 3. 檢查 LLM 友善度指標
             llm_friendliness = self._check_llm_friendliness(website_url)
             
-            # 4. 生成 AI 改善建議
+            # 4. 檢查產品品類權威性 (新增)
+            product_authority = self._check_product_category_authority(website_url, product_category)
+            
+            # 5. 檢查 FAQ 與消費者問題解答 (新增)
+            faq_analysis = self._check_faq_and_consumer_qa(website_url, product_category)
+            
+            # 6. 生成 AI 改善建議
             actionable_recommendations = self._generate_recommendations(
-                root_files, architecture_signals, llm_friendliness
+                root_files, architecture_signals, llm_friendliness, product_authority, faq_analysis
+            )
+            
+            # 7. 生成 SEO 與 LLM 友善度改善建議 (新增)
+            seo_llm_recommendations = self._generate_seo_llm_recommendations(
+                website_url, root_files, architecture_signals, llm_friendliness, product_authority, faq_analysis
             )
             
             return {
@@ -58,7 +69,10 @@ class WebsiteAIReadinessAnalyzer:
                     "root_files": root_files,
                     "architecture_signals": architecture_signals,
                     "llm_friendliness": llm_friendliness,
-                    "actionable_recommendations": actionable_recommendations
+                    "product_authority": product_authority,
+                    "faq_analysis": faq_analysis,
+                    "actionable_recommendations": actionable_recommendations,
+                    "seo_llm_recommendations": seo_llm_recommendations
                 }
             }
             
@@ -188,7 +202,9 @@ class WebsiteAIReadinessAnalyzer:
                 "desktop": {"performance": 0, "lcp": 0, "cls": 0}
             },
             "content_readability": "unknown",
-            "structured_data_score": 0
+            "structured_data_score": 0,
+            "semantic_html": False,
+            "content_hierarchy": "unknown"
         }
         
         try:
@@ -230,6 +246,30 @@ class WebsiteAIReadinessAnalyzer:
                     llm_friendliness["content_readability"] = "poor"
                     st.warning("⚠️ 內容結構較差，缺乏清晰的標題層級")
                 
+                # 檢查語義化 HTML
+                semantic_elements = soup.find_all(['article', 'section', 'nav', 'header', 'footer', 'main', 'aside'])
+                llm_friendliness["semantic_html"] = len(semantic_elements) > 0
+                
+                if llm_friendliness["semantic_html"]:
+                    st.success("✅ 使用語義化 HTML 標籤")
+                else:
+                    st.warning("⚠️ 未使用語義化 HTML 標籤")
+                
+                # 檢查內容層級結構
+                h1_count = len(soup.find_all('h1'))
+                h2_count = len(soup.find_all('h2'))
+                h3_count = len(soup.find_all('h3'))
+                
+                if h1_count == 1 and h2_count > 0:
+                    llm_friendliness["content_hierarchy"] = "good"
+                    st.success("✅ 內容層級結構良好")
+                elif h1_count > 0:
+                    llm_friendliness["content_hierarchy"] = "fair"
+                    st.info("ℹ️ 內容層級結構一般")
+                else:
+                    llm_friendliness["content_hierarchy"] = "poor"
+                    st.warning("⚠️ 內容層級結構較差")
+                
                 # 模擬 PageSpeed 分數 (實際應用中應使用 Google PageSpeed Insights API)
                 llm_friendliness["pagespeed_scores"] = {
                     "mobile": {"performance": 75, "lcp": 2.1, "cls": 0.05},
@@ -241,10 +281,205 @@ class WebsiteAIReadinessAnalyzer:
         
         return llm_friendliness
     
-    def _generate_recommendations(self, root_files: Dict, architecture_signals: Dict, llm_friendliness: Dict) -> List[Dict]:
+    def _check_product_category_authority(self, website_url: str, product_category: str = None) -> Dict:
+        """檢查產品品類權威性"""
+        st.write("🏆 檢查產品品類權威性...")
+        
+        product_authority = {
+            "product_pages_found": 0,
+            "product_info_completeness": "unknown",
+            "technical_specs_available": False,
+            "comparison_features": False,
+            "expert_content": False,
+            "authority_score": 0
+        }
+        
+        if not product_category:
+            st.info("ℹ️ 未指定產品品類，跳過產品權威性檢查")
+            return product_authority
+        
+        try:
+            response = self.session.get(website_url, timeout=10)
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.content, 'html.parser')
+                
+                # 搜尋產品相關頁面
+                product_keywords = [product_category.lower()]
+                if product_category == "除濕機":
+                    product_keywords.extend(["dehumidifier", "除濕", "乾燥", "濕度"])
+                elif product_category == "冷氣":
+                    product_keywords.extend(["air conditioner", "冷氣", "空調", "製冷"])
+                elif product_category == "洗衣機":
+                    product_keywords.extend(["washing machine", "洗衣", "洗滌"])
+                
+                # 檢查產品頁面
+                product_links = []
+                for link in soup.find_all('a', href=True):
+                    link_text = link.get_text().lower()
+                    href = link['href'].lower()
+                    
+                    for keyword in product_keywords:
+                        if keyword in link_text or keyword in href:
+                            product_links.append(link)
+                            break
+                
+                product_authority["product_pages_found"] = len(product_links)
+                
+                if product_links:
+                    st.success(f"✅ 發現 {len(product_links)} 個產品相關頁面")
+                    
+                    # 檢查產品資訊完整性
+                    page_text = soup.get_text().lower()
+                    
+                    # 檢查技術規格
+                    tech_specs_keywords = ["規格", "specification", "技術", "technical", "參數", "parameter"]
+                    if any(keyword in page_text for keyword in tech_specs_keywords):
+                        product_authority["technical_specs_available"] = True
+                        st.success("✅ 發現技術規格資訊")
+                    
+                    # 檢查比較功能
+                    comparison_keywords = ["比較", "compare", "對比", "vs", "versus"]
+                    if any(keyword in page_text for keyword in comparison_keywords):
+                        product_authority["comparison_features"] = True
+                        st.success("✅ 發現產品比較功能")
+                    
+                    # 檢查專家內容
+                    expert_keywords = ["專家", "expert", "專業", "professional", "評測", "review"]
+                    if any(keyword in page_text for keyword in expert_keywords):
+                        product_authority["expert_content"] = True
+                        st.success("✅ 發現專家內容")
+                    
+                    # 計算權威分數
+                    score = 0
+                    score += len(product_links) * 10
+                    if product_authority["technical_specs_available"]:
+                        score += 20
+                    if product_authority["comparison_features"]:
+                        score += 15
+                    if product_authority["expert_content"]:
+                        score += 15
+                    
+                    product_authority["authority_score"] = min(score, 100)
+                    
+                    if score >= 60:
+                        product_authority["product_info_completeness"] = "excellent"
+                    elif score >= 40:
+                        product_authority["product_info_completeness"] = "good"
+                    elif score >= 20:
+                        product_authority["product_info_completeness"] = "fair"
+                    else:
+                        product_authority["product_info_completeness"] = "poor"
+                        
+                else:
+                    st.warning(f"⚠️ 未發現 {product_category} 相關產品頁面")
+                    
+        except Exception as e:
+            st.warning(f"⚠️ 無法分析產品權威性: {str(e)}")
+        
+        return product_authority
+    
+    def _check_faq_and_consumer_qa(self, website_url: str, product_category: str = None) -> Dict:
+        """檢查 FAQ 與消費者問題解答"""
+        st.write("❓ 檢查 FAQ 與消費者問題解答...")
+        
+        faq_analysis = {
+            "faq_section_found": False,
+            "faq_count": 0,
+            "product_specific_qa": False,
+            "common_questions_covered": False,
+            "qa_content_quality": "unknown",
+            "qa_score": 0
+        }
+        
+        try:
+            response = self.session.get(website_url, timeout=10)
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.content, 'html.parser')
+                
+                # 搜尋 FAQ 相關元素
+                faq_keywords = ["faq", "常見問題", "frequently asked", "q&a", "問答"]
+                faq_elements = []
+                
+                # 檢查標題中的 FAQ
+                for heading in soup.find_all(['h1', 'h2', 'h3', 'h4']):
+                    heading_text = heading.get_text().lower()
+                    if any(keyword in heading_text for keyword in faq_keywords):
+                        faq_elements.append(heading)
+                
+                # 檢查 FAQ 區塊
+                faq_sections = soup.find_all(['div', 'section'], class_=re.compile(r'faq|question|answer', re.I))
+                faq_elements.extend(faq_sections)
+                
+                if faq_elements:
+                    faq_analysis["faq_section_found"] = True
+                    faq_analysis["faq_count"] = len(faq_elements)
+                    st.success(f"✅ 發現 FAQ 區塊，包含 {len(faq_elements)} 個問題")
+                    
+                    # 檢查產品特定問題
+                    if product_category:
+                        page_text = soup.get_text().lower()
+                        product_keywords = [product_category.lower()]
+                        if product_category == "除濕機":
+                            product_keywords.extend(["除濕", "濕度", "乾燥", "冷凝"])
+                        elif product_category == "冷氣":
+                            product_keywords.extend(["冷氣", "空調", "製冷", "溫度"])
+                        
+                        if any(keyword in page_text for keyword in product_keywords):
+                            faq_analysis["product_specific_qa"] = True
+                            st.success("✅ 發現產品特定問題解答")
+                    
+                    # 檢查常見問題覆蓋度
+                    common_questions = [
+                        "如何", "怎麼", "為什麼", "什麼時候", "哪裡", "多少錢",
+                        "how", "why", "when", "where", "what", "price", "cost"
+                    ]
+                    
+                    question_count = 0
+                    for element in faq_elements:
+                        element_text = element.get_text().lower()
+                        for question in common_questions:
+                            if question in element_text:
+                                question_count += 1
+                                break
+                    
+                    if question_count >= 3:
+                        faq_analysis["common_questions_covered"] = True
+                        st.success("✅ 覆蓋多個常見問題類型")
+                    
+                    # 評估 QA 內容品質
+                    score = 0
+                    score += len(faq_elements) * 5
+                    if faq_analysis["product_specific_qa"]:
+                        score += 20
+                    if faq_analysis["common_questions_covered"]:
+                        score += 15
+                    
+                    faq_analysis["qa_score"] = min(score, 100)
+                    
+                    if score >= 50:
+                        faq_analysis["qa_content_quality"] = "excellent"
+                    elif score >= 30:
+                        faq_analysis["qa_content_quality"] = "good"
+                    elif score >= 15:
+                        faq_analysis["qa_content_quality"] = "fair"
+                    else:
+                        faq_analysis["qa_content_quality"] = "poor"
+                        
+                else:
+                    st.warning("⚠️ 未發現 FAQ 區塊")
+                    
+        except Exception as e:
+            st.warning(f"⚠️ 無法分析 FAQ: {str(e)}")
+        
+        return faq_analysis
+    
+    def _generate_recommendations(self, root_files: Dict, architecture_signals: Dict, 
+                                llm_friendliness: Dict, product_authority: Dict, faq_analysis: Dict) -> List[Dict]:
         """使用 Gemini API 生成改善建議"""
         if not self.gemini_model:
-            return self._generate_fallback_recommendations(root_files, architecture_signals, llm_friendliness)
+            return self._generate_fallback_recommendations(
+                root_files, architecture_signals, llm_friendliness, product_authority, faq_analysis
+            )
         
         st.write("🤖 生成 AI 改善建議...")
         
@@ -253,7 +488,9 @@ class WebsiteAIReadinessAnalyzer:
             analysis_data = {
                 "root_files": root_files,
                 "architecture_signals": architecture_signals,
-                "llm_friendliness": llm_friendliness
+                "llm_friendliness": llm_friendliness,
+                "product_authority": product_authority,
+                "faq_analysis": faq_analysis
             }
             
             prompt = f"""
@@ -271,7 +508,7 @@ class WebsiteAIReadinessAnalyzer:
       "issue": "問題描述",
       "recommendation": "具體改善建議",
       "priority": "High/Medium/Low",
-      "category": "Root Files/Architecture/LLM Friendliness"
+      "category": "Root Files/Architecture/LLM Friendliness/Product Authority/FAQ"
     }}
   ]
 }}
@@ -285,9 +522,12 @@ class WebsiteAIReadinessAnalyzer:
             
         except Exception as e:
             st.warning(f"⚠️ Gemini API 生成建議失敗: {str(e)}")
-            return self._generate_fallback_recommendations(root_files, architecture_signals, llm_friendliness)
+            return self._generate_fallback_recommendations(
+                root_files, architecture_signals, llm_friendliness, product_authority, faq_analysis
+            )
     
-    def _generate_fallback_recommendations(self, root_files: Dict, architecture_signals: Dict, llm_friendliness: Dict) -> List[Dict]:
+    def _generate_fallback_recommendations(self, root_files: Dict, architecture_signals: Dict, 
+                                         llm_friendliness: Dict, product_authority: Dict, faq_analysis: Dict) -> List[Dict]:
         """生成備用改善建議（當 Gemini API 不可用時）"""
         recommendations = []
         
@@ -350,9 +590,119 @@ class WebsiteAIReadinessAnalyzer:
                 "category": "LLM Friendliness"
             })
         
+        if not llm_friendliness["semantic_html"]:
+            recommendations.append({
+                "issue": "No Semantic HTML",
+                "recommendation": "請使用語義化 HTML 標籤（article, section, nav 等），幫助 AI 理解內容結構。",
+                "priority": "Medium",
+                "category": "LLM Friendliness"
+            })
+        
+        # Product Authority 建議
+        if product_authority["product_info_completeness"] in ["poor", "fair"]:
+            recommendations.append({
+                "issue": "Incomplete Product Information",
+                "recommendation": "請完善產品資訊，包含技術規格、比較功能、專家評測等內容。",
+                "priority": "Medium",
+                "category": "Product Authority"
+            })
+        
+        # FAQ 建議
+        if not faq_analysis["faq_section_found"]:
+            recommendations.append({
+                "issue": "Missing FAQ Section",
+                "recommendation": "請建立 FAQ 區塊，回答消費者常見問題，提升網站權威性。",
+                "priority": "Medium",
+                "category": "FAQ"
+            })
+        
+        if faq_analysis["qa_content_quality"] in ["poor", "fair"]:
+            recommendations.append({
+                "issue": "Poor FAQ Quality",
+                "recommendation": "請改善 FAQ 內容品質，包含產品特定問題和常見問題解答。",
+                "priority": "Medium",
+                "category": "FAQ"
+            })
+        
         return recommendations
+    
+    def _generate_seo_llm_recommendations(self, website_url: str, root_files: Dict, architecture_signals: Dict,
+                                        llm_friendliness: Dict, product_authority: Dict, faq_analysis: Dict) -> List[Dict]:
+        """生成 SEO 與 LLM 友善度改善建議"""
+        st.write("🎯 生成 SEO 與 LLM 友善度建議...")
+        
+        seo_llm_recommendations = []
+        
+        # SEO 基礎建議
+        seo_llm_recommendations.append({
+            "category": "SEO 基礎優化",
+            "recommendations": [
+                "建立完整的 XML Sitemap，包含所有重要頁面",
+                "優化 robots.txt，確保搜尋引擎和 AI 機器人正確存取",
+                "實施 HTTPS 加密，提升安全性和信任度",
+                "改善網站載入速度，優化 Core Web Vitals 指標"
+            ]
+        })
+        
+        # 內容結構建議
+        content_recommendations = []
+        if llm_friendliness["content_readability"] != "good":
+            content_recommendations.append("使用清晰的標題層級結構（H1 > H2 > H3）")
+        if not llm_friendliness["semantic_html"]:
+            content_recommendations.append("實施語義化 HTML 標籤")
+        if not llm_friendliness["schema_detected"]:
+            content_recommendations.append("添加 Schema.org 結構化資料")
+        
+        if content_recommendations:
+            seo_llm_recommendations.append({
+                "category": "內容結構優化",
+                "recommendations": content_recommendations
+            })
+        
+        # LLM 友善度建議
+        llm_recommendations = [
+            "建立 llms.txt 檔案，明確告知 AI 模型如何處理網站內容",
+            "使用自然語言撰寫內容，避免過度優化關鍵字",
+            "提供完整的產品資訊和技術規格",
+            "建立 FAQ 區塊，回答消費者常見問題",
+            "使用內部連結建立內容關聯性",
+            "確保內容的可讀性和可理解性"
+        ]
+        
+        seo_llm_recommendations.append({
+            "category": "LLM 友善度優化",
+            "recommendations": llm_recommendations
+        })
+        
+        # 產品權威性建議
+        if product_authority["product_info_completeness"] in ["poor", "fair"]:
+            seo_llm_recommendations.append({
+                "category": "產品權威性建立",
+                "recommendations": [
+                    "提供詳細的產品技術規格和參數",
+                    "建立產品比較功能，幫助消費者選擇",
+                    "發布專家評測和使用指南",
+                    "建立產品使用教學和維護指南",
+                    "提供產品相關的專業知識內容"
+                ]
+            })
+        
+        # 未來 LLM 收錄建議
+        seo_llm_recommendations.append({
+            "category": "未來 LLM 收錄準備",
+            "recommendations": [
+                "建立完整的產品知識庫",
+                "提供結構化的產品資訊",
+                "使用標準化的內容格式",
+                "建立內容更新機制",
+                "監控 AI 模型對內容的存取和使用情況",
+                "準備適應未來 AI 搜尋演算法的內容策略"
+            ]
+        })
+        
+        return seo_llm_recommendations
 
-def run_website_analysis(website_url: str, gemini_api_key: Optional[str] = None) -> Dict:
+def run_website_analysis(website_url: str, product_category: Optional[str] = None, gemini_api_key: Optional[str] = None) -> Dict:
     """執行網站 AI 就緒度分析的主函式"""
     analyzer = WebsiteAIReadinessAnalyzer(gemini_api_key)
-    return analyzer.analyze_website(website_url) 
+    return analyzer.analyze_website(website_url, product_category) 

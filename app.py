@@ -175,13 +175,19 @@ def show_module1_page(gemini_api_key: Optional[str]):
             help="輸入要分析的網站 URL"
         )
         
+        product_category = st.selectbox(
+            "🏷️ 產品品類 (可選)",
+            ["", "除濕機", "冷氣", "洗衣機", "冰箱", "電視", "其他"],
+            help="選擇要分析的產品品類，用於檢查產品權威性"
+        )
+        
         submitted = st.form_submit_button("🚀 開始分析", type="primary")
     
     if submitted and website_url:
         with st.spinner("🔍 正在分析網站 AI 就緒度..."):
             try:
                 # 執行分析
-                result = run_website_analysis(website_url, gemini_api_key)
+                result = run_website_analysis(website_url, product_category if product_category else None, gemini_api_key)
                 
                 if "error" in result:
                     st.error(f"分析失敗: {result['error']}")
@@ -223,7 +229,7 @@ def display_module1_results(analysis_data: Dict, website_url: str):
     st.markdown("---")
     
     # 詳細分析結果
-    tab1, tab2, tab3, tab4 = st.tabs(["📁 根檔案", "🏗️ 架構", "🤖 LLM 友善度", "💡 建議"])
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📁 根檔案", "🏗️ 架構", "🤖 LLM 友善度", "🏆 產品權威", "❓ FAQ 分析", "💡 建議"])
     
     with tab1:
         display_root_files_analysis(analysis_data.get("root_files", {}))
@@ -235,7 +241,14 @@ def display_module1_results(analysis_data: Dict, website_url: str):
         display_llm_friendliness_analysis(analysis_data.get("llm_friendliness", {}))
     
     with tab4:
+        display_product_authority_analysis(analysis_data.get("product_authority", {}))
+    
+    with tab5:
+        display_faq_analysis(analysis_data.get("faq_analysis", {}))
+    
+    with tab6:
         display_recommendations(analysis_data.get("actionable_recommendations", []))
+        display_seo_llm_recommendations(analysis_data.get("seo_llm_recommendations", []))
 
 def show_module2_page(gemini_api_key: Optional[str]):
     """顯示模組 2 頁面"""
@@ -580,6 +593,98 @@ def display_recommendations(recommendations: List[Dict]):
         **優先級**: {rec.get("priority", "Medium")}
         **類別**: {rec.get("category", "General")}
         """)
+
+def display_product_authority_analysis(product_authority: Dict):
+    """顯示產品權威性分析"""
+    st.subheader("🏆 產品權威性分析")
+    
+    if not product_authority:
+        st.info("沒有產品權威性分析數據")
+        return
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.metric("產品頁面數量", product_authority.get("product_pages_found", 0))
+        st.metric("權威分數", f"{product_authority.get('authority_score', 0)}/100")
+    
+    with col2:
+        completeness = product_authority.get("product_info_completeness", "unknown")
+        completeness_icon = {
+            "excellent": "🟢",
+            "good": "🟡",
+            "fair": "🟠",
+            "poor": "🔴"
+        }.get(completeness, "⚪")
+        st.metric("資訊完整性", f"{completeness_icon} {completeness}")
+    
+    # 詳細檢查項目
+    st.markdown("### 📋 詳細檢查項目")
+    
+    checks = [
+        ("技術規格", product_authority.get("technical_specs_available", False)),
+        ("比較功能", product_authority.get("comparison_features", False)),
+        ("專家內容", product_authority.get("expert_content", False))
+    ]
+    
+    for check_name, check_result in checks:
+        if check_result:
+            st.success(f"✅ {check_name}")
+        else:
+            st.error(f"❌ {check_name}")
+
+def display_faq_analysis(faq_analysis: Dict):
+    """顯示 FAQ 分析"""
+    st.subheader("❓ FAQ 與消費者問題分析")
+    
+    if not faq_analysis:
+        st.info("沒有 FAQ 分析數據")
+        return
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.metric("FAQ 數量", faq_analysis.get("faq_count", 0))
+        st.metric("FAQ 區塊", "✅ 已找到" if faq_analysis.get("faq_section_found", False) else "❌ 未找到")
+    
+    with col2:
+        qa_quality = faq_analysis.get("qa_content_quality", "unknown")
+        qa_icon = {
+            "excellent": "🟢",
+            "good": "🟡",
+            "fair": "🟠",
+            "poor": "🔴"
+        }.get(qa_quality, "⚪")
+        st.metric("QA 品質", f"{qa_icon} {qa_quality}")
+        st.metric("QA 分數", f"{faq_analysis.get('qa_score', 0)}/100")
+    
+    # 詳細檢查項目
+    st.markdown("### 📋 詳細檢查項目")
+    
+    checks = [
+        ("產品特定問題", faq_analysis.get("product_specific_qa", False)),
+        ("常見問題覆蓋", faq_analysis.get("common_questions_covered", False))
+    ]
+    
+    for check_name, check_result in checks:
+        if check_result:
+            st.success(f"✅ {check_name}")
+        else:
+            st.error(f"❌ {check_name}")
+
+def display_seo_llm_recommendations(seo_llm_recommendations: List[Dict]):
+    """顯示 SEO 與 LLM 友善度建議"""
+    st.subheader("🎯 SEO 與 LLM 友善度改善建議")
+    
+    if not seo_llm_recommendations:
+        st.info("沒有 SEO 與 LLM 友善度建議")
+        return
+    
+    for category in seo_llm_recommendations:
+        with st.expander(f"📂 {category.get('category', 'General')}"):
+            recommendations = category.get('recommendations', [])
+            for rec in recommendations:
+                st.markdown(f"• {rec}")
 
 def display_ai_leader_analysis(ai_leader: Dict):
     """顯示 AI 領導者分析"""
