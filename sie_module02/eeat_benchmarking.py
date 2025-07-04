@@ -506,7 +506,49 @@ class EEATBenchmarkingAnalyzer:
 請根據以下分析結果，提供具體、可執行的策略建議：
 
 分析數據：
-{json.dumps(analysis_data, indent=2, ensure_ascii=False)}
+{{
+  "ai_leader_analysis": {{
+    "ai_leader_score": {ai_leader_analysis["ai_leader_score"]},
+    "ai_technology_indicators": {json.dumps(ai_leader_analysis["ai_technology_indicators"])},
+    "ai_content_signals": {json.dumps(ai_leader_analysis["ai_content_signals"])},
+    "ai_engagement_metrics": {{
+      "ai_mentions_count": {ai_leader_analysis["ai_engagement_metrics"]["ai_mentions_count"]},
+      "ai_technology_integration": {ai_leader_analysis["ai_engagement_metrics"]["ai_technology_integration"]},
+      "ai_content_frequency": {ai_leader_analysis["ai_engagement_metrics"]["ai_content_frequency"]}
+    }},
+    "ai_leadership_position": "{ai_leader_analysis['ai_leadership_position']}"
+  }},
+  "dynamic_media_weights": {{
+    "media_coverage_score": {dynamic_media_weights["media_coverage_score"]},
+    "coverage_rate": {dynamic_media_weights["coverage_rate"]},
+    "covered_count": {dynamic_media_weights["covered_count"]},
+    "total_count": {dynamic_media_weights["total_count"]},
+    "sources": {{
+      "新聞": {json.dumps(dynamic_media_weights["sources"]["新聞"])},
+      "社群": {json.dumps(dynamic_media_weights["sources"]["社群"])},
+      "論壇": {json.dumps(dynamic_media_weights["sources"]["論壇"])},
+      "影音": {json.dumps(dynamic_media_weights["sources"]["影音"])},
+      "Wiki": {json.dumps(dynamic_media_weights["sources"]["Wiki"])}
+    }}
+  }},
+  "competitor_benchmarking": {{
+    "competitor_analysis": {json.dumps(competitor_benchmarking["competitor_analysis"])},
+    "market_position": "{competitor_benchmarking['market_position']}",
+    "competitive_advantages": {json.dumps(competitor_benchmarking["competitive_advantages"])},
+    "improvement_opportunities": {json.dumps(competitor_benchmarking["improvement_opportunities"])}
+  }},
+  "trend_analysis": {{
+    "current_trends": {json.dumps(trend_analysis["current_trends"])},
+    "predicted_growth": {{
+      "ai_adoption_rate": {trend_analysis["predicted_growth"]["ai_adoption_rate"]},
+      "content_consumption_growth": {trend_analysis["predicted_growth"]["content_consumption_growth"]},
+      "social_engagement_increase": {trend_analysis["predicted_growth"]["social_engagement_increase"]},
+      "market_share_growth": {trend_analysis["predicted_growth"]["market_share_growth"]}
+    }},
+    "market_opportunities": {json.dumps(trend_analysis["market_opportunities"])},
+    "risk_factors": {json.dumps(trend_analysis["risk_factors"])}
+  }}
+}}
 
 請以 JSON 格式回傳策略建議，格式如下：
 {{
@@ -608,13 +650,13 @@ class EEATBenchmarkingAnalyzer:
 - trust_score: LLM 對該來源的信任度分數（0-100）
 - reason: 排序依據（如流量、互動數、引用次數、搜尋排名等）
 請以 JSON 格式回傳：
-{
+{{
   "新聞": [{{"name": "媒體名稱", "llm_favorite": true/false, "trust_score": 0-100, "reason": "排序依據"}}, ...],
   "社群": [{{"name": "社群名稱", "llm_favorite": true/false, "trust_score": 0-100, "reason": "排序依據"}}, ...],
   "論壇": [{{"name": "論壇名稱", "llm_favorite": true/false, "trust_score": 0-100, "reason": "排序依據"}}, ...],
   "影音": [{{"name": "影音平台名稱", "llm_favorite": true/false, "trust_score": 0-100, "reason": "排序依據"}}, ...],
   "Wiki": [{{"name": "Wiki名稱", "llm_favorite": true/false, "trust_score": 0-100, "reason": "排序依據"}}, ...]
-}
+}}
 """
             try:
                 response = self.gemini_model.generate_content(prompt)
