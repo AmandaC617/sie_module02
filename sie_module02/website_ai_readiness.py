@@ -554,14 +554,34 @@ class WebsiteAIReadinessAnalyzer:
 }}
 
 請確保建議具體、可執行，並針對 AI 就緒度優化。
+請只回傳 JSON 格式，不要包含其他文字。
 """
             
             response = self.gemini_model.generate_content(prompt)
-            recommendations_data = json.loads(response.text)
-            return recommendations_data.get("recommendations", [])
+            
+            # 嘗試解析 JSON 回應
+            try:
+                # 清理回應文字，移除可能的 markdown 格式
+                response_text = response.text.strip()
+                if response_text.startswith('```json'):
+                    response_text = response_text[7:]
+                if response_text.endswith('```'):
+                    response_text = response_text[:-3]
+                response_text = response_text.strip()
+                
+                recommendations_data = json.loads(response_text)
+                return recommendations_data.get("recommendations", [])
+                
+            except json.JSONDecodeError as json_error:
+                st.warning(f"⚠️ Gemini API 回應格式錯誤: {str(json_error)}")
+                st.info("使用備用建議生成...")
+                return self._generate_fallback_recommendations(
+                    root_files, architecture_signals, llm_friendliness, product_authority, faq_analysis
+                )
             
         except Exception as e:
             st.warning(f"⚠️ Gemini API 生成建議失敗: {str(e)}")
+            st.info("使用備用建議生成...")
             return self._generate_fallback_recommendations(
                 root_files, architecture_signals, llm_friendliness, product_authority, faq_analysis
             )
@@ -574,24 +594,32 @@ class WebsiteAIReadinessAnalyzer:
         # Root Files 建議
         if not root_files["has_robots_txt"]:
             recommendations.append({
-                "issue": "Missing robots.txt",
-                "recommendation": "請在網站根目錄建立 robots.txt 檔案，以正確引導搜尋引擎和 AI 機器人。",
+                "issue": "缺少 robots.txt 檔案",
+                "recommendation": "請在網站根目錄建立 robots.txt 檔案，內容包含：User-agent: * 和 Allow: /，以正確引導搜尋引擎和 AI 機器人。",
                 "priority": "High",
                 "category": "Root Files"
             })
         
         if not root_files["robots_allows_ai_bots"]:
             recommendations.append({
-                "issue": "AI Bot Crawling Blocked",
-                "recommendation": "請修改 robots.txt，確保允許 Google-Extended 與 GPTBot 等 AI User-Agent 進行存取。",
+                "issue": "robots.txt 封鎖 AI 機器人",
+                "recommendation": "請修改 robots.txt，確保允許 Google-Extended 與 GPTBot 等 AI User-Agent 進行存取。建議添加：User-agent: Google-Extended 和 Allow: /。",
                 "priority": "High",
                 "category": "Root Files"
             })
         
         if not root_files["has_sitemap_xml"]:
             recommendations.append({
-                "issue": "Missing sitemap.xml",
-                "recommendation": "請建立 sitemap.xml 檔案，幫助搜尋引擎和 AI 更好地理解網站結構。",
+                "issue": "缺少 sitemap.xml 檔案",
+                "recommendation": "請建立 sitemap.xml 檔案，列出所有重要頁面的 URL，幫助搜尋引擎和 AI 更好地理解網站結構。",
+                "priority": "Medium",
+                "category": "Root Files"
+            })
+        
+        if not root_files["sitemap_is_valid"]:
+            recommendations.append({
+                "issue": "sitemap.xml 格式錯誤",
+                "recommendation": "請檢查 sitemap.xml 檔案格式，確保符合 XML 標準，包含正確的 URL 結構。",
                 "priority": "Medium",
                 "category": "Root Files"
             })
@@ -599,16 +627,16 @@ class WebsiteAIReadinessAnalyzer:
         # Architecture 建議
         if not architecture_signals["uses_https"]:
             recommendations.append({
-                "issue": "No HTTPS",
-                "recommendation": "請啟用 HTTPS 加密連線，提升網站安全性和信任度。",
+                "issue": "未使用 HTTPS 加密",
+                "recommendation": "請啟用 HTTPS 加密連線，這對網站安全性和搜尋引擎排名都很重要。可以透過 SSL 憑證提供商或 CDN 服務實現。",
                 "priority": "High",
                 "category": "Architecture"
             })
         
         if architecture_signals["internal_link_structure"] == "poor":
             recommendations.append({
-                "issue": "Poor Internal Link Structure",
-                "recommendation": "請改善網站內部連結結構，確保主要頁面都有清晰的導航連結。",
+                "issue": "內部連結結構較差",
+                "recommendation": "請改善網站內部連結結構，確保主要頁面都有清晰的導航連結，這有助於 AI 理解網站內容關聯性。",
                 "priority": "Medium",
                 "category": "Architecture"
             })
@@ -616,24 +644,32 @@ class WebsiteAIReadinessAnalyzer:
         # LLM Friendliness 建議
         if not llm_friendliness["schema_detected"]:
             recommendations.append({
-                "issue": "Missing Structured Data",
-                "recommendation": "請為網站添加 Schema.org 結構化資料，幫助 AI 更好地理解內容。",
+                "issue": "缺少結構化資料",
+                "recommendation": "請為網站添加 Schema.org 結構化資料，包括產品、組織、文章等標記，幫助 AI 更好地理解內容語義。",
                 "priority": "Medium",
                 "category": "LLM Friendliness"
             })
         
         if llm_friendliness["content_readability"] == "poor":
             recommendations.append({
-                "issue": "Poor Content Structure",
-                "recommendation": "請改善內容結構，使用清晰的標題層級（H1, H2, H3）組織內容。",
+                "issue": "內容結構較差",
+                "recommendation": "請改善內容結構，使用清晰的標題層級（H1, H2, H3）組織內容，確保內容邏輯清晰，便於 AI 理解。",
                 "priority": "Medium",
                 "category": "LLM Friendliness"
             })
         
         if not llm_friendliness["semantic_html"]:
             recommendations.append({
-                "issue": "No Semantic HTML",
-                "recommendation": "請使用語義化 HTML 標籤（article, section, nav 等），幫助 AI 理解內容結構。",
+                "issue": "未使用語義化 HTML",
+                "recommendation": "請使用語義化 HTML 標籤（article, section, nav, header, footer 等），幫助 AI 理解內容結構和頁面佈局。",
+                "priority": "Medium",
+                "category": "LLM Friendliness"
+            })
+        
+        if llm_friendliness["content_hierarchy"] == "poor":
+            recommendations.append({
+                "issue": "內容層級結構較差",
+                "recommendation": "請改善內容層級結構，確保每個頁面有且僅有一個 H1 標題，並使用 H2、H3 等建立清晰的內容層級。",
                 "priority": "Medium",
                 "category": "LLM Friendliness"
             })
@@ -641,8 +677,24 @@ class WebsiteAIReadinessAnalyzer:
         # Product Authority 建議
         if product_authority["product_info_completeness"] in ["poor", "fair"]:
             recommendations.append({
-                "issue": "Incomplete Product Information",
-                "recommendation": "請完善產品資訊，包含技術規格、比較功能、專家評測等內容。",
+                "issue": "產品資訊不完整",
+                "recommendation": "請完善產品資訊，包含詳細的技術規格、產品比較功能、專家評測、使用指南等內容，提升產品權威性。",
+                "priority": "Medium",
+                "category": "Product Authority"
+            })
+        
+        if product_authority["product_pages_found"] == 0:
+            recommendations.append({
+                "issue": "未發現產品相關頁面",
+                "recommendation": "請建立專門的產品頁面，包含產品介紹、規格、功能說明等內容，幫助消費者了解產品特性。",
+                "priority": "High",
+                "category": "Product Authority"
+            })
+        
+        if not product_authority["technical_specs_available"]:
+            recommendations.append({
+                "issue": "缺少技術規格資訊",
+                "recommendation": "請為產品提供詳細的技術規格和參數，包括尺寸、重量、功率、功能特點等，提升產品資訊的專業性。",
                 "priority": "Medium",
                 "category": "Product Authority"
             })
@@ -650,18 +702,35 @@ class WebsiteAIReadinessAnalyzer:
         # FAQ 建議
         if not faq_analysis["faq_section_found"]:
             recommendations.append({
-                "issue": "Missing FAQ Section",
-                "recommendation": "請建立 FAQ 區塊，回答消費者常見問題，提升網站權威性。",
+                "issue": "缺少 FAQ 區塊",
+                "recommendation": "請建立 FAQ 區塊，回答消費者常見問題，這不僅能提升用戶體驗，也能增加網站內容的權威性。",
                 "priority": "Medium",
                 "category": "FAQ"
             })
         
         if faq_analysis["qa_content_quality"] in ["poor", "fair"]:
             recommendations.append({
-                "issue": "Poor FAQ Quality",
-                "recommendation": "請改善 FAQ 內容品質，包含產品特定問題和常見問題解答。",
+                "issue": "FAQ 內容品質較差",
+                "recommendation": "請改善 FAQ 內容品質，包含產品特定問題、使用問題、常見問題等，確保回答詳細且實用。",
                 "priority": "Medium",
                 "category": "FAQ"
+            })
+        
+        if not faq_analysis["product_specific_qa"]:
+            recommendations.append({
+                "issue": "缺少產品特定問題解答",
+                "recommendation": "請在 FAQ 中包含產品特定的問題和解答，幫助消費者更好地了解產品使用方法和注意事項。",
+                "priority": "Medium",
+                "category": "FAQ"
+            })
+        
+        # 如果沒有發現任何問題，提供一般性建議
+        if not recommendations:
+            recommendations.append({
+                "issue": "網站基礎良好",
+                "recommendation": "您的網站基礎架構良好！建議持續監控 AI 就緒度指標，並考慮建立 llms.txt 檔案以適應未來 AI 搜尋需求。",
+                "priority": "Low",
+                "category": "General"
             })
         
         return recommendations
