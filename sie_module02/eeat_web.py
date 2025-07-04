@@ -1,7 +1,7 @@
 import streamlit as st
 import json
 import datetime
-from sie_module02.eeat_module import run_module_2
+from eeat_module import run_module_2
 
 st.set_page_config(page_title="E-E-A-T 分析互動網頁", layout="centered")
 st.title("🔎 E-E-A-T 分析互動網頁版")
