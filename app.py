@@ -175,10 +175,10 @@ def show_module1_page(gemini_api_key: Optional[str]):
             help="輸入要分析的網站 URL"
         )
         
-        product_category = st.selectbox(
+        product_category = st.text_input(
             "🏷️ 產品品類 (可選)",
-            ["", "除濕機", "冷氣", "洗衣機", "冰箱", "電視", "其他"],
-            help="選擇要分析的產品品類，用於檢查產品權威性"
+            placeholder="例如: 除濕機、冷氣、洗衣機、手機、筆電...",
+            help="輸入要分析的產品品類，用於檢查產品權威性"
         )
         
         submitted = st.form_submit_button("🚀 開始分析", type="primary")

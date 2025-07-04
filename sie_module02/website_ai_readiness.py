@@ -305,12 +305,31 @@ class WebsiteAIReadinessAnalyzer:
                 
                 # 搜尋產品相關頁面
                 product_keywords = [product_category.lower()]
+                
+                # 根據產品品類添加相關關鍵字
                 if product_category == "除濕機":
                     product_keywords.extend(["dehumidifier", "除濕", "乾燥", "濕度"])
                 elif product_category == "冷氣":
                     product_keywords.extend(["air conditioner", "冷氣", "空調", "製冷"])
                 elif product_category == "洗衣機":
                     product_keywords.extend(["washing machine", "洗衣", "洗滌"])
+                elif product_category == "冰箱":
+                    product_keywords.extend(["refrigerator", "冰箱", "冷藏", "冷凍"])
+                elif product_category == "電視":
+                    product_keywords.extend(["tv", "television", "電視", "顯示器"])
+                elif product_category == "手機":
+                    product_keywords.extend(["mobile", "phone", "smartphone", "手機", "智慧型手機"])
+                elif product_category == "筆電":
+                    product_keywords.extend(["laptop", "notebook", "筆電", "筆記型電腦"])
+                elif product_category == "平板":
+                    product_keywords.extend(["tablet", "ipad", "平板", "平板電腦"])
+                elif product_category == "相機":
+                    product_keywords.extend(["camera", "相機", "攝影", "拍照"])
+                elif product_category == "音響":
+                    product_keywords.extend(["speaker", "audio", "音響", "喇叭"])
+                else:
+                    # 對於其他產品，添加一些通用的產品相關關鍵字
+                    product_keywords.extend(["產品", "product", "規格", "specification", "功能", "feature"])
                 
                 # 檢查產品頁面
                 product_links = []
@@ -419,10 +438,31 @@ class WebsiteAIReadinessAnalyzer:
                     if product_category:
                         page_text = soup.get_text().lower()
                         product_keywords = [product_category.lower()]
+                        
+                        # 根據產品品類添加相關關鍵字
                         if product_category == "除濕機":
                             product_keywords.extend(["除濕", "濕度", "乾燥", "冷凝"])
                         elif product_category == "冷氣":
                             product_keywords.extend(["冷氣", "空調", "製冷", "溫度"])
+                        elif product_category == "洗衣機":
+                            product_keywords.extend(["洗衣", "洗滌", "清潔"])
+                        elif product_category == "冰箱":
+                            product_keywords.extend(["冰箱", "冷藏", "冷凍", "保鮮"])
+                        elif product_category == "電視":
+                            product_keywords.extend(["電視", "顯示器", "螢幕"])
+                        elif product_category == "手機":
+                            product_keywords.extend(["手機", "智慧型手機", "通話", "app"])
+                        elif product_category == "筆電":
+                            product_keywords.extend(["筆電", "筆記型電腦", "電腦", "處理器"])
+                        elif product_category == "平板":
+                            product_keywords.extend(["平板", "平板電腦", "觸控"])
+                        elif product_category == "相機":
+                            product_keywords.extend(["相機", "攝影", "拍照", "鏡頭"])
+                        elif product_category == "音響":
+                            product_keywords.extend(["音響", "喇叭", "音樂", "音質"])
+                        else:
+                            # 對於其他產品，添加一些通用的產品相關關鍵字
+                            product_keywords.extend(["產品", "使用", "功能", "問題"])
                         
                         if any(keyword in page_text for keyword in product_keywords):
                             faq_analysis["product_specific_qa"] = True
