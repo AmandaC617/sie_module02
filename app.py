@@ -112,7 +112,7 @@ def show_homepage():
     """顯示首頁"""
     st.markdown('<div class="main-header">', unsafe_allow_html=True)
     st.title("🚀 SIE 平台")
-    st.subtitle("智能搜尋引擎優化分析系統")
+    st.markdown("### 智能搜尋引擎優化分析系統")
     st.markdown("</div>", unsafe_allow_html=True)
     
     # 功能介紹
@@ -355,7 +355,27 @@ def show_full_eeat_page(gemini_api_key: Optional[str]):
         with st.spinner("🔍 正在執行完整 E-E-A-T 分析..."):
             try:
                 # 執行分析
-                result = run_eeat_analysis(website_url, company_name, gemini_api_key)
+                # 創建配置數據
+                config_data = {
+                    "brand_name": company_name,
+                    "related_entities": [company_name],
+                    "media_weights": {
+                        "industry_news": 0.3,
+                        "mainstream_news": 0.4,
+                        "social_media": 0.2,
+                        "video_sites": 0.1
+                    },
+                    "official_info": f"Official information about {company_name}"
+                }
+                
+                # 模擬模組1輸出
+                module1_output = {
+                    "site_analysis": {
+                        "uses_https": website_url.startswith('https://')
+                    }
+                }
+                
+                result = run_eeat_analysis(config_data, module1_output)
                 
                 if "error" in result:
                     st.error(f"分析失敗: {result['error']}")
