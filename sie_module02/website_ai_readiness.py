@@ -26,12 +26,17 @@ class WebsiteAIReadinessAnalyzer:
         
         # 初始化 Gemini API
         if gemini_api_key and GEMINI_AVAILABLE:
-            genai.configure(api_key=gemini_api_key)
-            self.gemini_model = genai.GenerativeModel('gemini-1.5-flash')
+            configure = getattr(genai, 'configure', None)
+            GenerativeModel = getattr(genai, 'GenerativeModel', None)
+            if configure and GenerativeModel:
+                configure(api_key=gemini_api_key)
+                self.gemini_model = GenerativeModel('gemini-1.5-flash')
+            else:
+                self.gemini_model = None
         else:
             self.gemini_model = None
     
-    def analyze_website(self, website_url: str, product_category: str = None) -> Dict:
+    def analyze_website(self, website_url: str, product_category: str = None, brand: Optional[str] = None, market: Optional[str] = None) -> Dict:
         """分析網站的 AI 就緒度與技術健康度"""
         if not website_url.startswith(('http://', 'https://')):
             website_url = 'https://' + website_url
@@ -54,12 +59,18 @@ class WebsiteAIReadinessAnalyzer:
             # 5. 檢查 FAQ 與消費者問題解答 (新增)
             faq_analysis = self._check_faq_and_consumer_qa(website_url, product_category)
             
-            # 6. 生成 AI 改善建議
+            # 6. 新增消費者旅程FAQ對應分析
+            faq_journey_analysis = self._analyze_faq_journey(website_url, product_category, brand, market)
+            
+            # 7. 新增：用戶評論偵測
+            user_review_analysis = self._check_user_reviews(website_url)
+            
+            # 8. 生成 AI 改善建議
             actionable_recommendations = self._generate_recommendations(
                 root_files, architecture_signals, llm_friendliness, product_authority, faq_analysis
             )
             
-            # 7. 生成 SEO 與 LLM 友善度改善建議 (新增)
+            # 9. 生成 SEO 與 LLM 友善度改善建議 (新增)
             seo_llm_recommendations = self._generate_seo_llm_recommendations(
                 website_url, root_files, architecture_signals, llm_friendliness, product_authority, faq_analysis
             )
@@ -73,7 +84,9 @@ class WebsiteAIReadinessAnalyzer:
                     "faq_analysis": faq_analysis,
                     "actionable_recommendations": actionable_recommendations,
                     "seo_llm_recommendations": seo_llm_recommendations
-                }
+                },
+                "faq_journey_analysis": faq_journey_analysis,
+                "user_review_analysis": user_review_analysis
             }
             
         except Exception as e:
@@ -170,7 +183,11 @@ class WebsiteAIReadinessAnalyzer:
                 
                 # 檢查導航連結
                 nav_links = soup.find_all('a', href=True)
-                internal_links = [link for link in nav_links if link['href'].startswith('/') or website_url in link['href']]
+                internal_links = []
+                for link in nav_links:
+                    href = link.get('href')
+                    if isinstance(href, str) and (href.startswith('/') or (website_url in href)):
+                        internal_links.append(link)
                 
                 if len(internal_links) >= 5:
                     architecture_signals["internal_link_structure"] = "good"
@@ -184,7 +201,12 @@ class WebsiteAIReadinessAnalyzer:
                 
                 # 估算外部權威連結 (模擬)
                 architecture_signals["estimated_authority_links"] = len(nav_links) // 10
-                architecture_signals["external_links_count"] = len([link for link in nav_links if not link['href'].startswith('/') and website_url not in link['href']])
+                external_links = []
+                for link in nav_links:
+                    href = link.get('href')
+                    if isinstance(href, str) and not href.startswith('/') and website_url not in href:
+                        external_links.append(link)
+                architecture_signals["external_links_count"] = len(external_links)
                 
         except Exception as e:
             st.warning(f"⚠️ 無法分析網站架構: {str(e)}")
@@ -217,6 +239,8 @@ class WebsiteAIReadinessAnalyzer:
                 schema_types = []
                 for script in schema_scripts:
                     try:
+                        if script.string is None:
+                            continue
                         schema_data = json.loads(script.string)
                         if isinstance(schema_data, dict):
                             schema_type = schema_data.get('@type', 'Unknown')
@@ -335,8 +359,7 @@ class WebsiteAIReadinessAnalyzer:
                 product_links = []
                 for link in soup.find_all('a', href=True):
                     link_text = link.get_text().lower()
-                    href = link['href'].lower()
-                    
+                    href = link.get('href').lower() if link.get('href') else ''
                     for keyword in product_keywords:
                         if keyword in link_text or keyword in href:
                             product_links.append(link)
@@ -512,6 +535,106 @@ class WebsiteAIReadinessAnalyzer:
             st.warning(f"⚠️ 無法分析 FAQ: {str(e)}")
         
         return faq_analysis
+    
+    def _analyze_faq_journey(self, website_url: str, product_category: Optional[str], brand: Optional[str], market: Optional[str]) -> Dict:
+        """
+        產生中英文FAQ，並比對網站內容是否有覆蓋，標註權威性。
+        """
+        if not (product_category and brand and market):
+            return {"error": "缺少品類、品牌或市場資訊，無法進行FAQ對應分析。"}
+        
+        # 1. 產生FAQ（中英文）
+        faqs = self._generate_faqs_with_llm(product_category, brand, market)
+        
+        # 2. 取得網站內容
+        try:
+            response = requests.get(website_url, timeout=10)
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.content, 'html.parser')
+                page_text = soup.get_text(separator='\n').lower()
+            else:
+                page_text = ""
+        except Exception:
+            page_text = ""
+        
+        # 3. 比對FAQ是否有覆蓋
+        results = []
+        for faq in faqs:
+            found, location, authority = self._check_faq_coverage(faq, page_text)
+            results.append({
+                "question_zh": faq["zh"],
+                "question_en": faq["en"],
+                "covered": found,
+                "location": location,
+                "authority": authority
+            })
+        return {"faqs": results}
+
+    def _generate_faqs_with_llm(self, product_category: str, brand: str, market: str) -> List[Dict]:
+        """
+        用 LLM 產生中英文FAQ，回傳格式：[{"zh": ..., "en": ...}, ...]
+        """
+        if not self.gemini_model:
+            # 備用範例
+            return [
+                {"zh": f"{product_category}的耗電量是多少？", "en": f"What is the power consumption of the {product_category}?"},
+                {"zh": f"如何選擇適合房間大小的{product_category}？", "en": f"How to choose the right {product_category} for room size?"},
+                {"zh": f"{product_category}保固多久？", "en": f"What is the warranty period of the {product_category}?"},
+                {"zh": f"{product_category}遇到異常聲音怎麼辦？", "en": f"What to do if the {product_category} makes abnormal noise?"},
+                {"zh": f"{product_category}是否有自動斷電功能？", "en": f"Does the {product_category} have an auto power-off function?"}
+            ]
+        prompt = f"""
+請根據下列資訊，列出消費者最常詢問{brand}品牌在{market}市場的{product_category}產品的10個常見問題，並給出每題的英文翻譯：
+請以JSON格式回傳：
+[
+  {{"zh": "問題1（中文）", "en": "Question 1 (English)"}},
+  ...
+]
+"""
+        response = self.gemini_model.generate_content(prompt)
+        try:
+            text = response.text.strip()
+            if text.startswith('```json'):
+                text = text[7:]
+            if text.endswith('```'):
+                text = text[:-3]
+            text = text.strip()
+            faqs = json.loads(text)
+            return faqs[:10]
+        except Exception:
+            # 若解析失敗，回傳備用範例
+            return [
+                {"zh": f"{product_category}的耗電量是多少？", "en": f"What is the power consumption of the {product_category}?"},
+                {"zh": f"如何選擇適合房間大小的{product_category}？", "en": f"How to choose the right {product_category} for room size?"},
+                {"zh": f"{product_category}保固多久？", "en": f"What is the warranty period of the {product_category}?"},
+                {"zh": f"{product_category}遇到異常聲音怎麼辦？", "en": f"What to do if the {product_category} makes abnormal noise?"},
+                {"zh": f"{product_category}是否有自動斷電功能？", "en": f"Does the {product_category} have an auto power-off function?"}
+            ]
+
+    def _check_faq_coverage(self, faq: Dict, page_text: str) -> Tuple[bool, str, bool]:
+        """
+        檢查網站內容是否有覆蓋該FAQ，並判斷權威性。
+        """
+        # 關鍵字比對（中英文）
+        keywords = [faq["zh"].replace("？", "").replace("?", "").strip(), faq["en"].replace("?", "").strip()]
+        found = False
+        location = ""
+        authority = False
+        for kw in keywords:
+            if kw and kw.lower() in page_text:
+                found = True
+                # 簡單判斷出現位置
+                if "faq" in page_text:
+                    location = "FAQ"
+                elif "產品" in page_text or "product" in page_text:
+                    location = "產品頁"
+                else:
+                    location = "首頁/其他"
+                # 權威性判斷：有數據/專家/官方說明
+                if re.search(r"(\d+|專家|醫師|官方|engineer|official|data|statistic|report|study)", page_text):
+                    authority = True
+                break
+        return found, location, authority
     
     def _generate_recommendations(self, root_files: Dict, architecture_signals: Dict, 
                                 llm_friendliness: Dict, product_authority: Dict, faq_analysis: Dict) -> List[Dict]:
@@ -810,6 +933,154 @@ class WebsiteAIReadinessAnalyzer:
         })
         
         return seo_llm_recommendations
+
+    def _check_user_reviews(self, website_url: str) -> Dict:
+        """
+        偵測網站是否有用戶評論（支援中英文，含 schema.org、常見 class/id、關鍵字 fallback、分頁抓取、情感分析）
+        """
+        result = {
+            "has_review_schema": False,
+            "review_count": 0,
+            "average_rating": None,
+            "review_samples": [],
+            "review_block_found": False,
+            "review_keywords_found": False,
+            "sentiment_summary": {"positive": 0, "neutral": 0, "negative": 0},
+        }
+        max_pages = 5
+        max_reviews = 50
+        try:
+            all_reviews = []
+            visited_urls = set()
+            def fetch_reviews(url, page_num=1):
+                if url in visited_urls or page_num > max_pages or len(all_reviews) >= max_reviews:
+                    return
+                visited_urls.add(url)
+                response = requests.get(url, timeout=10)
+                if response.status_code != 200:
+                    return
+                soup = BeautifulSoup(response.content, 'html.parser')
+                page_text = soup.get_text(separator='\n').lower()
+                # 1. schema.org Review/AggregateRating
+                schema_scripts = soup.find_all('script', type='application/ld+json')
+                for script in schema_scripts:
+                    try:
+                        if script.string is None:
+                            continue
+                        data = json.loads(script.string)
+                        if isinstance(data, dict):
+                            types = [data.get('@type', '')]
+                            if 'review' in data or 'aggregateRating' in data:
+                                types += [data.get('review', {}).get('@type', ''), data.get('aggregateRating', {}).get('@type', '')]
+                            for t in types:
+                                if t and t.lower() in ['review', 'aggregaterating']:
+                                    result["has_review_schema"] = True
+                                    if 'aggregateRating' in data:
+                                        agg = data['aggregateRating']
+                                        result["average_rating"] = agg.get('ratingValue')
+                                        result["review_count"] = agg.get('reviewCount', agg.get('ratingCount', 0))
+                                    if 'review' in data:
+                                        reviews = data['review']
+                                        if isinstance(reviews, dict):
+                                            reviews = [reviews]
+                                        for r in reviews:
+                                            if len(all_reviews) >= max_reviews:
+                                                break
+                                            all_reviews.append({
+                                                "author": r.get('author', {}).get('name') if isinstance(r.get('author'), dict) else r.get('author'),
+                                                "rating": r.get('reviewRating', {}).get('ratingValue') if isinstance(r.get('reviewRating'), dict) else None,
+                                                "text": r.get('reviewBody', r.get('description', '')),
+                                                "page": page_num
+                                            })
+                                    break
+                        elif isinstance(data, list):
+                            for item in data:
+                                if isinstance(item, dict) and item.get('@type', '').lower() in ['review', 'aggregaterating']:
+                                    result["has_review_schema"] = True
+                                    if 'aggregateRating' in item:
+                                        agg = item['aggregateRating']
+                                        result["average_rating"] = agg.get('ratingValue')
+                                        result["review_count"] = agg.get('reviewCount', agg.get('ratingCount', 0))
+                                    if 'review' in item:
+                                        reviews = item['review']
+                                        if isinstance(reviews, dict):
+                                            reviews = [reviews]
+                                        for r in reviews:
+                                            if len(all_reviews) >= max_reviews:
+                                                break
+                                            all_reviews.append({
+                                                "author": r.get('author', {}).get('name') if isinstance(r.get('author'), dict) else r.get('author'),
+                                                "rating": r.get('reviewRating', {}).get('ratingValue') if isinstance(r.get('reviewRating'), dict) else None,
+                                                "text": r.get('reviewBody', r.get('description', '')),
+                                                "page": page_num
+                                            })
+                                    break
+                    except Exception:
+                        continue
+                # 2. HTML 區塊偵測（常見 class/id，多語系）
+                review_classes = [
+                    'review', 'reviews', 'user-review', 'user-reviews', 'comment', 'comments', 'rating', 'ratings',
+                    '評價', '用戶評論', '用戶評價', '買家評論', '買家評價', '商品評論', '商品評價', '星級', '星星', '星', '評論'
+                ]
+                found_blocks = []
+                for cls in review_classes:
+                    found_blocks += soup.find_all(class_=re.compile(cls, re.I))
+                    found_blocks += soup.find_all(id=re.compile(cls, re.I))
+                if found_blocks:
+                    result["review_block_found"] = True
+                    for block in found_blocks:
+                        if len(all_reviews) >= max_reviews:
+                            break
+                        text = block.get_text(separator=' ', strip=True)
+                        if text:
+                            all_reviews.append({"author": None, "rating": None, "text": text[:200], "page": page_num})
+                # 3. 關鍵字 fallback（多語系）
+                review_keywords = [
+                    'review', 'reviews', 'user review', 'user reviews', 'comment', 'comments', 'rating', 'ratings',
+                    '評價', '用戶評論', '用戶評價', '買家評論', '買家評價', '商品評論', '商品評價', '星級', '星星', '星', '評論'
+                ]
+                if any(kw in page_text for kw in review_keywords):
+                    result["review_keywords_found"] = True
+                # 4. 分頁偵測
+                if len(all_reviews) < max_reviews:
+                    next_page_selectors = [
+                        {'tag': 'a', 'text': ['next', '下一頁', '下頁', 'more reviews', '更多評論', '查看更多', '>>', '›']},
+                        {'tag': 'button', 'text': ['next', '下一頁', '下頁', 'more reviews', '更多評論', '查看更多', '>>', '›']}
+                    ]
+                    for sel in next_page_selectors:
+                        for el in soup.find_all(sel['tag']):
+                            el_text = el.get_text().strip().lower()
+                            if any(t in el_text for t in sel['text']):
+                                href = el.get('href')
+                                if href and not href.startswith('#'):
+                                    next_url = urljoin(url, href)
+                                    if next_url not in visited_urls:
+                                        fetch_reviews(next_url, page_num+1)
+                                # button 可能是 JS 載入，這裡僅支援靜態 href
+            fetch_reviews(website_url)
+            # 情感分析（簡易詞典法，可換 LLM）
+            def simple_sentiment(text):
+                pos_words = ['good', 'great', 'excellent', 'love', 'best', '讚', '好', '棒', '推薦', '滿意', '值得', '喜歡', '優秀', 'positive']
+                neg_words = ['bad', 'poor', 'terrible', 'hate', 'worst', '爛', '差', '失望', '負評', '不推', '糟', 'negative']
+                text_l = text.lower()
+                pos = any(w in text_l for w in pos_words)
+                neg = any(w in text_l for w in neg_words)
+                if pos and not neg:
+                    return 'positive'
+                elif neg and not pos:
+                    return 'negative'
+                else:
+                    return 'neutral'
+            for r in all_reviews:
+                sentiment = simple_sentiment(r['text'])
+                r['sentiment'] = sentiment
+                result['sentiment_summary'][sentiment] += 1
+            # 補齊欄位
+            result['review_samples'] = all_reviews[:10]
+            result['review_count'] = len(all_reviews)
+        except Exception:
+            pass
+        return result
 
 def run_website_analysis(website_url: str, product_category: Optional[str] = None, gemini_api_key: Optional[str] = None) -> Dict:
     """執行網站 AI 就緒度分析的主函式"""

@@ -20,7 +20,7 @@ except ImportError:
 class EEATBenchmarkingAnalyzer:
     """動態 E-E-A-T 評估與競爭基準分析器"""
     
-    def __init__(self, gemini_api_key: Optional[str] = None):
+    def __init__(self, gemini_api_key: Optional[str] = None, market: Optional[str] = None, product_category: Optional[str] = None, brand: Optional[str] = None):
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': 'SIE-Benchmarking-Tool/1.0 (contact@example.com)'
@@ -32,42 +32,60 @@ class EEATBenchmarkingAnalyzer:
             self.gemini_model = genai.GenerativeModel('gemini-1.5-flash')
         else:
             self.gemini_model = None
+        
+        self.market = market or "台灣"
+        self.product_category = product_category or ""
+        self.brand = brand or ""
+        # 動態產生主流媒體/論壇/社群名單
+        self.market_media_dict = self._generate_market_media_with_llm(self.market, self.product_category, self.brand)
+        # 預留：根據市場分類的競爭對手清單
+        self.market_competitors_dict = {
+            "台灣": ["台積電", "聯電", "世界先進"],
+            "全球": ["Intel", "Samsung", "TSMC"]
+            # ...可擴充更多市場
+        }
     
     def analyze_eeat_benchmarking(self, target_website: str, competitors: List[str] = []) -> Dict:
         """執行動態 E-E-A-T 評估與競爭基準分析"""
         if not target_website.startswith(('http://', 'https://')):
             target_website = 'https://' + target_website
-        
-        st.info(f"🔍 正在分析目標網站: {target_website}")
-        
+        st.info(f"🔍 正在分析目標網站: {target_website}（市場：{self.market}）")
         try:
-            # 1. AI 領導者識別與分析
+            # 0. LLM 行業/市場/產品領導者推薦
+            leaders_recommendation = self._llm_recommend_leaders(self.market, self.product_category, self.brand, target_website)
+            # 0.1 LLM 自動比對本品牌與標竿差異
+            brand_gap_analysis = self._llm_compare_with_benchmarks(self.brand, target_website, self.market, self.product_category, leaders_recommendation)
+            # 1. AI 領導者識別與分析（保留技術指標分析）
             ai_leader_analysis = self._identify_ai_leaders(target_website)
-            
             # 2. 動態媒體權重評估
             dynamic_media_weights = self._analyze_dynamic_media_weights(target_website)
-            
-            # 3. 競爭對手基準分析
+            # 3. 真實媒體曝光紀錄查詢
+            real_media_mentions = self._fetch_real_media_mentions(self.market_media_dict)
+            # 4. 競爭對手基準分析
+            if not competitors:
+                competitors = self.market_competitors_dict.get(self.market, [])
             competitor_benchmarking = self._analyze_competitor_benchmarks(target_website, competitors)
-            
-            # 4. 趨勢追蹤與預測
+            # 5. 趨勢追蹤與預測
             trend_analysis = self._analyze_trends_and_predictions(target_website)
-            
-            # 5. 生成策略建議
+            # 6. 生成策略建議
             strategic_recommendations = self._generate_strategic_recommendations(
                 ai_leader_analysis, dynamic_media_weights, competitor_benchmarking, trend_analysis
             )
-            
             return {
                 "eeat_benchmarking": {
+                    "leaders_recommendation": leaders_recommendation,
+                    "brand_gap_analysis": brand_gap_analysis,
                     "ai_leader_analysis": ai_leader_analysis,
                     "dynamic_media_weights": dynamic_media_weights,
+                    "real_media_mentions": real_media_mentions,
                     "competitor_benchmarking": competitor_benchmarking,
                     "trend_analysis": trend_analysis,
-                    "strategic_recommendations": strategic_recommendations
+                    "strategic_recommendations": strategic_recommendations,
+                    "market": self.market,
+                    "market_media": self.market_media_dict,
+                    "market_competitors": self.market_competitors_dict.get(self.market, [])
                 }
             }
-            
         except Exception as e:
             st.error(f"分析過程中發生錯誤: {str(e)}")
             return {"error": str(e)}
@@ -157,99 +175,122 @@ class EEATBenchmarkingAnalyzer:
         
         return ai_leader_analysis
     
-    def _analyze_dynamic_media_weights(self, target_website: str) -> Dict:
-        """分析動態媒體權重"""
-        st.write("📊 分析動態媒體權重...")
-        
-        dynamic_media_weights = {
-            "media_mentions": {
-                "recent_mentions": [],
-                "mention_sentiment": "neutral",
-                "media_coverage_score": 0
-            },
-            "social_media_presence": {
-                "platforms": [],
-                "engagement_metrics": {},
-                "social_authority_score": 0
-            },
-            "content_distribution": {
-                "content_types": [],
-                "distribution_channels": [],
-                "reach_metrics": {}
+    def _analyze_dynamic_media_weights(self, target_website: str) -> dict:
+        """
+        分析媒體權重與覆蓋率：
+        - 新聞類來源用 Google News API 查詢品牌/網站是否被提及。
+        - 其他類型（社群、論壇、影音、Wiki）用 Gemini LLM 推論是否常被提及。
+        - 綜合信任度、提及情況、來源多樣性計算分數。
+        """
+        media_dict = self.market_media_dict
+        brand = self.brand
+        product_category = self.product_category
+        result = {"新聞": [], "社群": [], "論壇": [], "影音": [], "Wiki": []}
+        total_weight = 0
+        covered_weight = 0
+        covered_count = 0
+        total_count = 0
+        # 1. 新聞類：Google News API
+        api_key = "bce856a8587d46ff84050efba536c445"
+        endpoint = "https://newsapi.org/v2/everything"
+        for media in media_dict.get("新聞", []):
+            name = media.get("name")
+            trust_score = media.get("trust_score", 80)
+            llm_favorite = media.get("llm_favorite", False)
+            params = {
+                "q": f"{brand} OR {product_category}",
+                "sources": "",
+                "apiKey": api_key,
+                "language": "zh",
+                "sortBy": "publishedAt",
+                "pageSize": 3
             }
+            found = False
+            try:
+                resp = requests.get(endpoint, params=params, timeout=10)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    for article in data.get("articles", []):
+                        if name in article.get("source", {}).get("name", ""):
+                            found = True
+                            break
+            except Exception:
+                pass
+            result["新聞"].append({
+                "name": name,
+                "llm_favorite": llm_favorite,
+                "trust_score": trust_score,
+                "reason": media.get("reason", ""),
+                "covered": found,
+                "source_type": "新聞"
+            })
+            total_weight += trust_score
+            total_count += 1
+            if found:
+                covered_weight += trust_score
+                covered_count += 1
+        # 2. 其他類型：LLM 輔助推論
+        if self.gemini_model:
+            for media_type in ["社群", "論壇", "影音", "Wiki"]:
+                for media in media_dict.get(media_type, []):
+                    name = media.get("name")
+                    trust_score = media.get("trust_score", 80)
+                    llm_favorite = media.get("llm_favorite", False)
+                    prompt = f"""
+請根據下列資訊，推論品牌/網站是否常被此來源提及、引用、嵌入或連結：
+- 品牌：{brand}
+- 品類：{product_category}
+- 來源名稱：{name}
+- 官網：{target_website}
+請回傳：
+{{
+  "covered": true/false, // 是否常被提及
+  "score": 0-100, // 推論分數，愈高愈常被提及
+  "reason": "推論依據"
+}}
+"""
+                    try:
+                        response = self.gemini_model.generate_content(prompt)
+                        text = response.text.strip()
+                        if text.startswith('```json'):
+                            text = text[7:]
+                        if text.endswith('```'):
+                            text = text[:-3]
+                        text = text.strip()
+                        info = json.loads(text)
+                        covered = info.get("covered", False)
+                        score = info.get("score", 0)
+                        reason = info.get("reason", "")
+                    except Exception:
+                        covered = False
+                        score = 0
+                        reason = "LLM 回應失敗"
+                    result[media_type].append({
+                        "name": name,
+                        "llm_favorite": llm_favorite,
+                        "trust_score": trust_score,
+                        "reason": media.get("reason", ""),
+                        "covered": covered,
+                        "llm_score": score,
+                        "llm_reason": reason,
+                        "source_type": media_type
+                    })
+                    total_weight += trust_score
+                    total_count += 1
+                    if covered:
+                        covered_weight += trust_score
+                        covered_count += 1
+        # 3. 分數計算
+        coverage_rate = covered_count / total_count if total_count else 0
+        weighted_coverage = covered_weight / total_weight if total_weight else 0
+        media_weight_score = int(weighted_coverage * 100)
+        return {
+            "media_coverage_score": media_weight_score,
+            "coverage_rate": coverage_rate,
+            "covered_count": covered_count,
+            "total_count": total_count,
+            "sources": result
         }
-        
-        try:
-            response = self.session.get(target_website, timeout=10)
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.content, 'html.parser')
-                
-                # 檢查社交媒體連結
-                social_platforms = []
-                social_links = soup.find_all('a', href=True)
-                
-                social_platform_patterns = {
-                    'linkedin': 'linkedin.com',
-                    'twitter': 'twitter.com',
-                    'facebook': 'facebook.com',
-                    'instagram': 'instagram.com',
-                    'youtube': 'youtube.com'
-                }
-                
-                for link in social_links:
-                    href = link['href'].lower()
-                    for platform, pattern in social_platform_patterns.items():
-                        if pattern in href and platform not in social_platforms:
-                            social_platforms.append(platform)
-                
-                dynamic_media_weights["social_media_presence"]["platforms"] = social_platforms
-                
-                # 模擬媒體提及
-                recent_mentions = [
-                    {
-                        "source": "TechCrunch",
-                        "date": (datetime.now() - timedelta(days=random.randint(1, 30))).strftime("%Y-%m-%d"),
-                        "title": f"AI Innovation at {target_website}",
-                        "sentiment": random.choice(["positive", "neutral", "positive"])
-                    },
-                    {
-                        "source": "VentureBeat",
-                        "date": (datetime.now() - timedelta(days=random.randint(1, 60))).strftime("%Y-%m-%d"),
-                        "title": f"Digital Transformation Insights from {target_website}",
-                        "sentiment": "positive"
-                    }
-                ]
-                
-                dynamic_media_weights["media_mentions"]["recent_mentions"] = recent_mentions
-                
-                # 計算媒體覆蓋分數
-                positive_mentions = len([m for m in recent_mentions if m["sentiment"] == "positive"])
-                total_mentions = len(recent_mentions)
-                media_coverage_score = (positive_mentions / max(total_mentions, 1)) * 100
-                
-                dynamic_media_weights["media_mentions"]["media_coverage_score"] = media_coverage_score
-                dynamic_media_weights["media_mentions"]["mention_sentiment"] = "positive" if media_coverage_score > 60 else "neutral"
-                
-                # 模擬社交媒體權威分數
-                social_authority_score = len(social_platforms) * 20 + random.randint(10, 30)
-                dynamic_media_weights["social_media_presence"]["social_authority_score"] = min(social_authority_score, 100)
-                
-                # 模擬參與度指標
-                dynamic_media_weights["social_media_presence"]["engagement_metrics"] = {
-                    "total_followers": random.randint(1000, 50000),
-                    "engagement_rate": random.uniform(2.0, 8.0),
-                    "post_frequency": random.randint(3, 15)
-                }
-                
-                if social_platforms:
-                    st.success(f"✅ 發現社交媒體平台: {', '.join(social_platforms)}")
-                else:
-                    st.warning("⚠️ 未發現社交媒體連結")
-                
-        except Exception as e:
-            st.warning(f"⚠️ 無法分析動態媒體權重: {str(e)}")
-        
-        return dynamic_media_weights
     
     def _analyze_competitor_benchmarks(self, target_website: str, competitors: List[str] = []) -> Dict:
         """分析競爭對手基準"""
@@ -549,7 +590,170 @@ class EEATBenchmarkingAnalyzer:
         
         return recommendations
 
-def run_eeat_benchmarking(target_website: str, competitors: List[str] = [], gemini_api_key: Optional[str] = None) -> Dict:
-    """執行 E-E-A-T 基準分析的主函式"""
-    analyzer = EEATBenchmarkingAnalyzer(gemini_api_key)
+    def _generate_market_media_with_llm(self, market: str, product_category: str, brand: str) -> dict:
+        """
+        用 LLM 產生主流媒體/論壇/社群/影音/Wiki名單，並標註 llm_favorite、信任度分數、排序依據。
+        """
+        if self.gemini_model:
+            prompt = f"""
+請根據下列資訊，列出{market}市場、{product_category}品類、{brand}品牌最具代表性的來源，分為：
+- 新聞（行業新聞、綜合新聞）
+- 社群（Facebook、Instagram、Twitter、LinkedIn等）
+- 論壇（PTT、Dcard、Reddit等）
+- 影音（YouTube、Bilibili等）
+- Wiki（Wikipedia等）
+每類請列出3-5個來源，並針對每個來源回傳：
+- name: 來源名稱
+- llm_favorite: 是否為 LLM 最常引用
+- trust_score: LLM 對該來源的信任度分數（0-100）
+- reason: 排序依據（如流量、互動數、引用次數、搜尋排名等）
+請以 JSON 格式回傳：
+{
+  "新聞": [{{"name": "媒體名稱", "llm_favorite": true/false, "trust_score": 0-100, "reason": "排序依據"}}, ...],
+  "社群": [{{"name": "社群名稱", "llm_favorite": true/false, "trust_score": 0-100, "reason": "排序依據"}}, ...],
+  "論壇": [{{"name": "論壇名稱", "llm_favorite": true/false, "trust_score": 0-100, "reason": "排序依據"}}, ...],
+  "影音": [{{"name": "影音平台名稱", "llm_favorite": true/false, "trust_score": 0-100, "reason": "排序依據"}}, ...],
+  "Wiki": [{{"name": "Wiki名稱", "llm_favorite": true/false, "trust_score": 0-100, "reason": "排序依據"}}, ...]
+}
+"""
+            try:
+                response = self.gemini_model.generate_content(prompt)
+                text = response.text.strip()
+                if text.startswith('```json'):
+                    text = text[7:]
+                if text.endswith('```'):
+                    text = text[:-3]
+                text = text.strip()
+                media_dict = json.loads(text)
+                return media_dict
+            except Exception:
+                pass
+        # fallback 靜態範例
+        return {
+            "新聞": [
+                {"name": "經濟日報", "llm_favorite": True, "trust_score": 95, "reason": "行業影響力高"},
+                {"name": "工商時報", "llm_favorite": False, "trust_score": 88, "reason": "財經新聞引用多"}
+            ],
+            "論壇": [
+                {"name": "Mobile01", "llm_favorite": False, "trust_score": 80, "reason": "科技討論熱度高"},
+                {"name": "PTT Tech_Job", "llm_favorite": True, "trust_score": 90, "reason": "工程師社群活躍"}
+            ],
+            "社群": [
+                {"name": "Dcard", "llm_favorite": False, "trust_score": 85, "reason": "年輕族群活躍"},
+                {"name": "LinkedIn", "llm_favorite": True, "trust_score": 92, "reason": "專業人士聚集"}
+            ],
+            "影音": [
+                {"name": "YouTube", "llm_favorite": True, "trust_score": 98, "reason": "影音流量最大"},
+                {"name": "Bilibili", "llm_favorite": False, "trust_score": 80, "reason": "年輕用戶多"}
+            ],
+            "Wiki": [
+                {"name": "Wikipedia", "llm_favorite": True, "trust_score": 99, "reason": "全球最大百科"}
+            ]
+        }
+
+    def _fetch_real_media_mentions(self, market_media_dict: dict) -> dict:
+        """
+        使用 Google News API 查詢 LLM 產生的媒體/論壇/社群名單，取得標題、連結、日期、摘要、來源、llm_favorite。
+        """
+        api_key = "bce856a8587d46ff84050efba536c445"
+        endpoint = "https://newsapi.org/v2/everything"
+        result = {"新聞": [], "論壇": [], "社群": []}
+        for media_type in ["新聞", "論壇", "社群"]:
+            for media in market_media_dict.get(media_type, []):
+                name = media.get("name")
+                llm_favorite = media.get("llm_favorite", False)
+                params = {
+                    "q": name,
+                    "apiKey": api_key,
+                    "language": "zh",
+                    "sortBy": "publishedAt",
+                    "pageSize": 3
+                }
+                try:
+                    resp = requests.get(endpoint, params=params, timeout=10)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        for article in data.get("articles", []):
+                            result[media_type].append({
+                                "media": name,
+                                "llm_favorite": llm_favorite,
+                                "title": article.get("title"),
+                                "url": article.get("url"),
+                                "date": article.get("publishedAt"),
+                                "summary": article.get("description"),
+                                "source": article.get("source", {}).get("name")
+                            })
+                except Exception:
+                    continue
+        return result
+
+    def _llm_recommend_leaders(self, market: str, product_category: str, brand: str, official_site: str) -> list:
+        """
+        用 LLM 產生行業/市場/產品領導者名單，含品牌/公司/產品/官網/推薦說明/是否標竿。
+        """
+        if not self.gemini_model:
+            # fallback 範例
+            return [
+                {"name": "台積電", "website": "https://www.tsmc.com/", "reason": "全球半導體製造領導者，技術創新與市佔率最高。", "is_benchmark": True},
+                {"name": "聯電", "website": "https://www.umc.com/", "reason": "台灣第二大晶圓代工廠，具國際競爭力。", "is_benchmark": False}
+            ]
+        prompt = f"""
+請根據下列資訊，列出{market}市場、{product_category}品類、{brand}品牌領域最具權威與競爭力的品牌/公司/產品（含本地與國際），每個請附上簡要說明與官網連結，並標註是否為行業標竿：
+品牌/官網：{brand}（{official_site}）
+請以 JSON 格式回傳：
+[
+  {{"name": "品牌/公司/產品名稱", "website": "官網連結", "reason": "推薦原因", "is_benchmark": true/false}},
+  ...
+]
+"""
+        try:
+            response = self.gemini_model.generate_content(prompt)
+            text = response.text.strip()
+            if text.startswith('```json'):
+                text = text[7:]
+            if text.endswith('```'):
+                text = text[:-3]
+            text = text.strip()
+            leaders = json.loads(text)
+            return leaders
+        except Exception:
+            return []
+
+    def _llm_compare_with_benchmarks(self, brand: str, official_site: str, market: str, product_category: str, leaders: list) -> dict:
+        """
+        用 LLM 比對本品牌與行業標竿，產生優劣勢/差距分數/建議。
+        """
+        if not self.gemini_model or not leaders:
+            return {"summary": "無法取得 LLM 標竿比對分析（缺少 LLM 或標竿資料）"}
+        prompt = f"""
+請根據下列資訊，分析本品牌與行業標竿的具體差異，列出優勢、劣勢、差距分數與具體建議：
+- 行業/市場：{market}
+- 產品/品類：{product_category}
+- 本品牌：{brand}（{official_site}）
+- 行業標竿：{json.dumps(leaders, ensure_ascii=False)}
+請以 JSON 格式回傳：
+{{
+  "gap_score": 0~100,  // 本品牌與標竿的整體差距分數，分數越高差距越大
+  "advantages": ["優勢1", "優勢2", ...],
+  "disadvantages": ["劣勢1", "劣勢2", ...],
+  "recommendations": ["建議1", "建議2", ...],
+  "summary": "簡要總結"
+}}
+"""
+        try:
+            response = self.gemini_model.generate_content(prompt)
+            text = response.text.strip()
+            if text.startswith('```json'):
+                text = text[7:]
+            if text.endswith('```'):
+                text = text[:-3]
+            text = text.strip()
+            gap = json.loads(text)
+            return gap
+        except Exception:
+            return {"summary": "LLM 比對失敗或格式錯誤"}
+
+def run_eeat_benchmarking(target_website: str, competitors: List[str] = [], gemini_api_key: Optional[str] = None, industry: Optional[str] = None, product_category: Optional[str] = None, brand: Optional[str] = None) -> Dict:
+    """執行 E-E-A-T 基準分析的主函式（支援行業/品類/品牌）"""
+    analyzer = EEATBenchmarkingAnalyzer(gemini_api_key, industry, product_category, brand)
     return analyzer.analyze_eeat_benchmarking(target_website, competitors) 

@@ -112,7 +112,7 @@ def show_homepage():
     """顯示首頁"""
     st.markdown('<div class="main-header">', unsafe_allow_html=True)
     st.title("🚀 SIE 平台")
-    st.subtitle("智能搜尋引擎優化分析系統")
+    st.markdown("#### 智能搜尋引擎優化分析系統")
     st.markdown("</div>", unsafe_allow_html=True)
     
     # 功能介紹
@@ -223,7 +223,8 @@ def display_module1_results(analysis_data: Dict, website_url: str):
     st.markdown("---")
     
     # 詳細分析結果
-    tab1, tab2, tab3, tab4 = st.tabs(["📁 根檔案", "🏗️ 架構", "🤖 LLM 友善度", "💡 建議"])
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+        "📁 根檔案", "🏗️ 架構", "🤖 LLM 友善度", "💡 建議", "📝 用戶評論分析", "🧭 內容與消費者旅程對應"])
     
     with tab1:
         display_root_files_analysis(analysis_data.get("root_files", {}))
@@ -236,6 +237,35 @@ def display_module1_results(analysis_data: Dict, website_url: str):
     
     with tab4:
         display_recommendations(analysis_data.get("actionable_recommendations", []))
+    
+    with tab5:
+        review = analysis_data.get('user_review_analysis', {})
+        st.subheader('用戶評論分析')
+        st.write(f"評論總數: {review.get('review_count', 0)}")
+        st.write(f"平均分數: {review.get('average_rating')}")
+        st.write(f"情感分布: {review.get('sentiment_summary')}")
+        for r in review.get('review_samples', []):
+            st.markdown(f"- 第{r.get('page', 1)}頁 | {r.get('sentiment', '')} | {r.get('author', '匿名')}: {r.get('text')}")
+    
+    with tab6:
+        faq_journey = analysis_data.get('faq_journey_analysis', {})
+        st.subheader('網站內容與消費者旅程對應分析')
+        faqs = faq_journey.get('faqs', [])
+        if not faqs:
+            st.info('尚未產生 FAQ 或缺少品類/品牌/市場資訊')
+        else:
+            for f in faqs:
+                covered = '✅ 覆蓋' if f.get('covered') else '❌ 未覆蓋'
+                authority = '（具權威性）' if f.get('authority') else ''
+                st.markdown(f"- **{f['question_zh']}** / {f['question_en']}<br>\n  {covered} {authority} 於 {f.get('location', '')}", unsafe_allow_html=True)
+            # 建議
+            not_covered = [f for f in faqs if not f.get('covered')]
+            if not_covered:
+                st.warning('部分常見消費者問題未被覆蓋，建議：')
+                for f in not_covered:
+                    st.markdown(f"- 請補充：{f['question_zh']} / {f['question_en']}")
+            else:
+                st.success('所有關鍵消費者問題皆有覆蓋，內容完整！')
 
 def show_module2_page(gemini_api_key: Optional[str]):
     """顯示模組 2 頁面"""
@@ -244,90 +274,300 @@ def show_module2_page(gemini_api_key: Optional[str]):
     
     # 輸入區域
     with st.form("module2_form"):
-        target_website = st.text_input(
-            "🎯 目標網站",
-            placeholder="例如: example.com",
-            help="輸入要分析的主要網站"
+        markets = st.multiselect(
+            "🌏 市場（可多選）",
+            ["台灣", "中國", "美國", "全球", "其他"],
+            default=["台灣"],
+            help="可同時分析多個市場"
         )
-        
+        if "其他" in markets:
+            custom_market = st.text_input("請輸入自訂市場名稱", "")
+            if custom_market:
+                markets = [m for m in markets if m != "其他"] + [custom_market]
+        industry = st.selectbox(
+            "🏭 行業",
+            ["家電", "電子", "汽車", "食品", "金融", "醫療", "其他"],
+            index=0,
+            help="選擇要分析的行業"
+        )
+        if industry == "其他":
+            industry = st.text_input("請輸入自訂行業名稱", "")
+        brand = st.text_input(
+            "🏢 品牌",
+            placeholder="例如: ExampleBrand",
+            help="輸入品牌名稱"
+        )
+        product = st.text_input(
+            "📦 產品/品類",
+            placeholder="例如: 空氣清淨機",
+            help="輸入產品或品類名稱"
+        )
+        official_site = st.text_input(
+            "🌐 官網連結",
+            placeholder="例如: https://brand.com",
+            help="輸入品牌或產品官網網址"
+        )
         competitors = st.text_area(
             "🏆 競爭對手 (每行一個)",
             placeholder="competitor1.com\ncompetitor2.com\ncompetitor3.com",
             help="輸入競爭對手網站，每行一個"
         )
-        
         submitted = st.form_submit_button("🚀 開始分析", type="primary")
     
-    if submitted and target_website:
-        # 處理競爭對手列表
+    if submitted and official_site and markets:
         competitor_list = []
         if competitors:
             competitor_list = [comp.strip() for comp in competitors.split('\n') if comp.strip()]
-        
-        with st.spinner("🔍 正在執行 E-E-A-T 基準分析..."):
-            try:
-                # 執行分析
-                result = run_eeat_benchmarking(target_website, competitor_list, gemini_api_key)
-                
-                if "error" in result:
-                    st.error(f"分析失敗: {result['error']}")
-                    return
-                
-                analysis_data = result.get("eeat_benchmarking", {})
-                
-                # 顯示分析結果
-                display_module2_results(analysis_data, target_website)
-                
-                # 儲存結果
-                save_analysis_result("module2", target_website, result)
-                
-            except Exception as e:
-                st.error(f"分析過程中發生錯誤: {str(e)}")
+        all_results = {}
+        with st.spinner("🔍 正在執行多市場 E-E-A-T 基準分析..."):
+            for market in markets:
+                try:
+                    result = run_eeat_benchmarking(
+                        official_site, competitor_list, gemini_api_key, market, product, brand
+                    )
+                    all_results[market] = result.get("eeat_benchmarking", {})
+                except Exception as e:
+                    all_results[market] = {"error": str(e)}
+        # 跨市場指標總覽表
+        if len(all_results) > 1:
+            overview = []
+            for market, data in all_results.items():
+                if "error" in data:
+                    overview.append({
+                        "市場": market,
+                        "差距分數": "-",
+                        "媒體分數": "-",
+                        "社群分數": "-",
+                        "領導者": "-"
+                    })
+                else:
+                    gap = data.get("brand_gap_analysis", {})
+                    media_weights = data.get("dynamic_media_weights", {})
+                    media_score = media_weights.get("media_mentions", {}).get("media_coverage_score", "-")
+                    social_score = media_weights.get("social_media_presence", {}).get("social_authority_score", "-")
+                    leaders = data.get("leaders_recommendation", [])
+                    leader_names = ", ".join([l.get("name", "") for l in leaders]) if leaders else "-"
+                    overview.append({
+                        "市場": market,
+                        "差距分數": gap.get("gap_score", "-"),
+                        "媒體分數": media_score,
+                        "社群分數": social_score,
+                        "領導者": leader_names
+                    })
+            df = pd.DataFrame(overview)
+            st.markdown("### 🌏 跨市場指標總覽")
+            st.dataframe(df, use_container_width=True)
+        # 顯示多市場分析結果
+        tabs = st.tabs([f"{m} 市場" for m in all_results])
+        for i, market in enumerate(all_results):
+            with tabs[i]:
+                if "error" in all_results[market]:
+                    st.error(f"{market} 分析失敗: {all_results[market]['error']}")
+                else:
+                    display_module2_results(all_results[market], official_site, market, industry, product, brand)
+        # 儲存結果（僅存第一個市場結果）
+        save_analysis_result("module2", official_site, {m: all_results[m] for m in all_results})
 
-def display_module2_results(analysis_data: Dict, target_website: str):
-    """顯示模組 2 分析結果"""
-    st.success(f"✅ 分析完成: {target_website}")
-    
-    # 總體評分
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        ai_leader = analysis_data.get("ai_leader_analysis", {})
-        ai_score = ai_leader.get("ai_leader_score", 0)
-        st.metric("AI 領導者分數", f"{ai_score}/100", "🤖")
-    
-    with col2:
+def display_module2_results(analysis_data: Dict, official_site: str, market: str, industry: str, product: str, brand: str):
+    """顯示模組 2 分析結果（以市場為主分組）"""
+    st.success(f"✅ 分析完成: {market}｜{industry}｜{brand}｜{product}")
+    st.markdown(f"[官網連結]({official_site})")
+    # 領導者比對區塊
+    leaders = analysis_data.get("leaders_recommendation", [])
+    st.subheader(f"🏆 {market}｜{industry}｜{product}｜{brand} 領導者比對")
+    if not leaders:
+        st.info("尚無 LLM 推薦領導者資料")
+    else:
+        for leader in leaders:
+            star = "⭐" if leader.get("is_benchmark") else ""
+            st.markdown(f"- [{leader['name']}]({leader['website']}) {star}<br>推薦說明：{leader['reason']}", unsafe_allow_html=True)
+    st.markdown("---")
+    # 品牌與標竿差異分析區塊
+    gap = analysis_data.get("brand_gap_analysis", {})
+    st.subheader(f"📉 {market}｜{brand} 與標竿差異分析")
+    if not gap or not isinstance(gap, dict) or "summary" not in gap:
+        st.info("尚無 LLM 差異分析資料")
+    else:
+        st.markdown(f"**整體差距分數**：{gap.get('gap_score', 'N/A')}/100")
+        st.markdown(f"**優勢**：")
+        for adv in gap.get("advantages", []):
+            st.markdown(f"- {adv}")
+        st.markdown(f"**劣勢**：")
+        for disadv in gap.get("disadvantages", []):
+            st.markdown(f"- {disadv}")
+        st.markdown(f"**建議**：")
+        for rec in gap.get("recommendations", []):
+            st.markdown(f"- {rec}")
+        st.markdown(f"**總結**：{gap.get('summary', '')}")
+    st.markdown("---")
+    # 總體評分（移除AI領導者分數）
+    cols = st.columns(3)
+    with cols[0]:
         media_weights = analysis_data.get("dynamic_media_weights", {})
-        media_score = media_weights.get("media_mentions", {}).get("media_coverage_score", 0)
-        st.metric("媒體覆蓋分數", f"{media_score:.1f}/100", "📰")
-    
-    with col3:
-        social_score = media_weights.get("social_media_presence", {}).get("social_authority_score", 0)
+        social_score = media_weights.get("social_media_presence", {})
+        social_score = social_score.get("social_authority_score", 0)
         st.metric("社交媒體權威", f"{social_score:.1f}/100", "📱")
-    
-    with col4:
+    with cols[1]:
         competitor_bench = analysis_data.get("competitor_benchmarking", {})
         market_position = competitor_bench.get("market_position", "unknown")
-        st.metric("市場地位", market_position.title(), "🏆")
-    
+        st.metric(f"{market} 市場地位", str(market_position).title())
+    with cols[2]:
+        media_weights = analysis_data.get("dynamic_media_weights", {})
+        media_score = media_weights.get("media_coverage_score", 0)
+        st.metric("媒體權重分數", f"{media_score}/100", "📰")
     st.markdown("---")
-    
-    # 詳細分析結果
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["🤖 AI 領導者", "📊 媒體權重", "🏆 競爭分析", "📈 趨勢", "💡 策略"])
-    
+    # 媒體權重分析區塊
+    media_weights = analysis_data.get("dynamic_media_weights", {})
+    st.subheader("📊 媒體權重分析")
+    st.markdown(f"**媒體權重分數**：{media_weights.get('media_coverage_score', 0)}/100")
+    st.markdown(f"**覆蓋率**：{media_weights.get('coverage_rate', 0):.0%}（{media_weights.get('covered_count', 0)}/{media_weights.get('total_count', 0)}）")
+    sources = media_weights.get("sources", {})
+    # 來源清單表格
+    for media_type in ["新聞", "社群", "論壇", "影音", "Wiki"]:
+        items = sources.get(media_type, [])
+        if not items:
+            continue
+        st.markdown(f"#### {media_type}")
+        df = pd.DataFrame([
+            {
+                "來源名稱": src.get('name', ''),
+                "信任度": src.get('trust_score', 0),
+                "高權威": '⭐' if src.get('llm_favorite') else '',
+                "覆蓋": '✅' if src.get('covered') else '❌',
+                "推論分數": src.get('llm_score', '') if media_type != "新聞" else '',
+                "推論依據": src.get('llm_reason', '') if media_type != "新聞" else '',
+                "排序依據": src.get('reason', '')
+            }
+            for src in items
+        ])
+        st.dataframe(df, use_container_width=True)
+    # 媒體權重分數長條圖
+    bar_data = []
+    for media_type in ["新聞", "社群", "論壇", "影音", "Wiki"]:
+        items = sources.get(media_type, [])
+        for src in items:
+            bar_data.append({
+                "來源": src.get('name', ''),
+                "類型": media_type,
+                "信任度": src.get('trust_score', 0),
+                "覆蓋": 1 if src.get('covered') else 0
+            })
+    if bar_data:
+        bar_df = pd.DataFrame(bar_data)
+        fig = go.Figure()
+        for t in bar_df['類型'].unique():
+            sub = bar_df[bar_df['類型'] == t]
+            fig.add_trace(go.Bar(
+                x=sub['來源'],
+                y=sub['信任度'],
+                name=t,
+                marker_color=None
+            ))
+        fig.update_layout(barmode='group', title='來源信任度長條圖', xaxis_title='來源', yaxis_title='信任度')
+        st.plotly_chart(fig, use_container_width=True)
+    # 各類型覆蓋率雷達圖
+    radar_labels = []
+    radar_values = []
+    for media_type in ["新聞", "社群", "論壇", "影音", "Wiki"]:
+        items = sources.get(media_type, [])
+        if items:
+            radar_labels.append(media_type)
+            radar_values.append(sum(1 for src in items if src.get('covered')) / len(items))
+    if radar_labels:
+        radar_fig = go.Figure()
+        radar_fig.add_trace(go.Scatterpolar(r=radar_values, theta=radar_labels, fill='toself', name='覆蓋率'))
+        radar_fig.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0,1])), showlegend=False, title='各類型來源覆蓋率雷達圖')
+        st.plotly_chart(radar_fig, use_container_width=True)
+    # 匯出內容自訂勾選
+    st.markdown("---")
+    export_options = st.multiselect(
+        "選擇要匯出的內容區塊",
+        ["來源清單", "媒體權重圖表", "競爭分析", "差異分析", "策略建議"],
+        default=["來源清單", "媒體權重圖表"]
+    )
+    pdf_title = st.text_input("PDF 報告標題", f"{market}｜{brand} 媒體權重與E-E-A-T分析報告")
+    # 競爭分析表格
+    competitor_bench = analysis_data.get("competitor_benchmarking", {})
+    if "競爭分析" in export_options:
+        st.subheader("🏆 競爭對手基準分析")
+        comp_df = pd.DataFrame([
+            {"競爭對手": k, **v} for k, v in competitor_bench.get("competitors", {}).items()
+        ]) if competitor_bench.get("competitors") else pd.DataFrame()
+        if not comp_df.empty:
+            st.dataframe(comp_df, use_container_width=True)
+    # 差異分析表格
+    gap = analysis_data.get("brand_gap_analysis", {})
+    if "差異分析" in export_options:
+        st.subheader("📉 品牌與標竿差異分析")
+        gap_df = pd.DataFrame({
+            "優勢": gap.get("advantages", []),
+            "劣勢": gap.get("disadvantages", []),
+            "建議": gap.get("recommendations", [])
+        })
+        st.dataframe(gap_df, use_container_width=True)
+    # 策略建議表格
+    strategies = analysis_data.get("strategic_recommendations", [])
+    if "策略建議" in export_options:
+        st.subheader("💡 策略建議")
+        strat_df = pd.DataFrame(strategies)
+        if not strat_df.empty:
+            st.dataframe(strat_df, use_container_width=True)
+    # 進階 PDF/Excel 匯出
+    import io
+    import base64
+    export_sections = []
+    if "來源清單" in export_options:
+        export_sections.append(("來源清單", export_df))
+    if "媒體權重圖表" in export_options and bar_data:
+        export_sections.append(("媒體權重長條圖", bar_df))
+    if "競爭分析" in export_options and not comp_df.empty:
+        export_sections.append(("競爭分析", comp_df))
+    if "差異分析" in export_options:
+        export_sections.append(("差異分析", gap_df))
+    if "策略建議" in export_options and not strat_df.empty:
+        export_sections.append(("策略建議", strat_df))
+    # 匯出 Excel
+    excel_buffer = io.BytesIO()
+    with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
+        for title, df in export_sections:
+            df.to_excel(writer, sheet_name=title[:31], index=False)
+    st.download_button(
+        label="自訂內容匯出 Excel",
+        data=excel_buffer.getvalue(),
+        file_name=f"{market}_{brand}_media_analysis_custom.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    # 進階 PDF 匯出
+    try:
+        from fpdf import FPDF
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Arial", size=14)
+        pdf.cell(0, 12, pdf_title, ln=True, align='C')
+        pdf.set_font("Arial", size=10)
+        for title, df in export_sections:
+            pdf.ln(8)
+            pdf.set_font("Arial", style='B', size=12)
+            pdf.cell(0, 10, title, ln=True)
+            pdf.set_font("Arial", size=10)
+            for i, row in df.iterrows():
+                pdf.cell(0, 8, str(row.to_dict()), ln=True)
+        pdf_buffer = io.BytesIO(pdf.output(dest='S').encode('latin1'))
+        st.download_button(
+            label="自訂內容匯出 PDF",
+            data=pdf_buffer.getvalue(),
+            file_name=f"{market}_{brand}_media_analysis_custom.pdf",
+            mime="application/pdf"
+        )
+    except Exception:
+        st.info("如需 PDF 匯出，請安裝 fpdf 套件。")
+    # 其餘分析區塊（移除AI領導者分析tab）
+    tab1, tab2, tab3 = st.tabs([f"🏆 {market} 競爭分析", "📈 趨勢", "💡 策略"])
     with tab1:
-        display_ai_leader_analysis(analysis_data.get("ai_leader_analysis", {}))
-    
-    with tab2:
-        display_media_weights_analysis(analysis_data.get("dynamic_media_weights", {}))
-    
-    with tab3:
         display_competitor_analysis(analysis_data.get("competitor_benchmarking", {}))
-    
-    with tab4:
+    with tab2:
         display_trend_analysis(analysis_data.get("trend_analysis", {}))
-    
-    with tab5:
+    with tab3:
         display_strategic_recommendations(analysis_data.get("strategic_recommendations", []))
 
 def show_full_eeat_page(gemini_api_key: Optional[str]):
@@ -560,69 +800,6 @@ def display_recommendations(recommendations: List[Dict]):
         **優先級**: {rec.get("priority", "Medium")}
         **類別**: {rec.get("category", "General")}
         """)
-
-def display_ai_leader_analysis(ai_leader: Dict):
-    """顯示 AI 領導者分析"""
-    st.subheader("🤖 AI 領導者分析")
-    
-    # AI 領導者分數
-    ai_score = ai_leader.get("ai_leader_score", 0)
-    st.metric("AI 領導者分數", f"{ai_score}/100")
-    
-    # AI 技術指標
-    tech_indicators = ai_leader.get("ai_technology_indicators", [])
-    if tech_indicators:
-        st.success(f"✅ 發現 AI 技術指標: {', '.join(tech_indicators)}")
-    else:
-        st.warning("⚠️ 未發現 AI 技術指標")
-    
-    # AI 內容信號
-    content_signals = ai_leader.get("ai_content_signals", [])
-    if content_signals:
-        st.success(f"✅ 發現 AI 內容信號: {', '.join(content_signals)}")
-    else:
-        st.info("ℹ️ 未發現 AI 相關內容")
-    
-    # AI 領導地位
-    position = ai_leader.get("ai_leadership_position", "unknown")
-    position_emoji = {
-        "leader": "🏆",
-        "emerging": "📈",
-        "follower": "📊",
-        "laggard": "⚠️"
-    }.get(position, "❓")
-    
-    st.markdown(f"**AI 領導地位**: {position_emoji} {position.title()}")
-
-def display_media_weights_analysis(media_weights: Dict):
-    """顯示媒體權重分析"""
-    st.subheader("📊 媒體權重分析")
-    
-    # 媒體提及
-    mentions = media_weights.get("media_mentions", {})
-    media_score = mentions.get("media_coverage_score", 0)
-    st.metric("媒體覆蓋分數", f"{media_score:.1f}/100")
-    
-    recent_mentions = mentions.get("recent_mentions", [])
-    if recent_mentions:
-        st.markdown("### 📰 最近媒體提及")
-        for mention in recent_mentions:
-            sentiment_emoji = "✅" if mention.get("sentiment") == "positive" else "⚠️"
-            st.markdown(f"""
-            {sentiment_emoji} **{mention.get('source', 'Unknown')}** - {mention.get('date', 'Unknown')}
-            {mention.get('title', 'No title')}
-            """)
-    
-    # 社交媒體
-    social = media_weights.get("social_media_presence", {})
-    social_score = social.get("social_authority_score", 0)
-    st.metric("社交媒體權威分數", f"{social_score:.1f}/100")
-    
-    platforms = social.get("platforms", [])
-    if platforms:
-        st.success(f"✅ 發現社交媒體平台: {', '.join(platforms)}")
-    else:
-        st.warning("⚠️ 未發現社交媒體連結")
 
 def display_competitor_analysis(competitor_bench: Dict):
     """顯示競爭對手分析"""
