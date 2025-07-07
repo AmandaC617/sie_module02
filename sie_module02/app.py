@@ -77,8 +77,8 @@ def main():
                 "🏠 首頁",
                 "🔧 模組 1: 網站 AI 就緒度分析",
                 "📊 模組 2: E-E-A-T 基準分析",
-                "🎯 完整 E-E-A-T 分析",
                 "🔍 模組 3: AI 資訊正確度檢查",
+                "🎯 模組 4: 完整 E-E-A-T 分析",
                 "📈 分析報告"
             ]
         )
@@ -87,8 +87,8 @@ def main():
         st.markdown("""
         1. **模組 1**: 分析網站技術健康度與 AI 就緒度
         2. **模組 2**: 動態 E-E-A-T 評估與競爭基準分析
-        3. **完整分析**: 傳統 E-E-A-T 分析
-        4. **模組 3**: AI 資訊正確度檢查與深度比對
+        3. **模組 3**: AI 資訊正確度檢查與深度比對
+        4. **模組 4**: 傳統 E-E-A-T 分析
         5. **報告**: 查看歷史分析結果
         """)
 
@@ -99,10 +99,10 @@ def main():
         show_module1_page(gemini_api_key)
     elif page == "📊 模組 2: E-E-A-T 基準分析":
         show_module2_page(gemini_api_key)
-    elif page == "🎯 完整 E-E-A-T 分析":
-        show_full_eeat_page(gemini_api_key)
     elif page == "🔍 模組 3: AI 資訊正確度檢查":
         show_module3_page(gemini_api_key)
+    elif page == "🎯 模組 4: 完整 E-E-A-T 分析":
+        show_full_eeat_page(gemini_api_key)
     elif page == "📈 分析報告":
         show_reports_page()
 
@@ -311,7 +311,7 @@ def show_module2_page(gemini_api_key: Optional[str]):
                 st.error(f"分析過程中發生錯誤: {str(e)}")
 
 def show_full_eeat_page(gemini_api_key: Optional[str]):
-    st.title("🎯 完整 E-E-A-T 分析")
+    st.title("🎯 模組 4: 完整 E-E-A-T 分析")
     st.markdown("傳統 E-E-A-T (Experience, Expertise, Authoritativeness, Trustworthiness) 分析")
     with st.form("full_eeat_form"):
         website_url = st.text_input("🌐 網站 URL", placeholder="例如: example.com", help="輸入要分析的網站 URL")
