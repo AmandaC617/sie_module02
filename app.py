@@ -12,6 +12,7 @@ from typing import Dict, List, Optional
 from sie_module02.website_ai_readiness import run_website_analysis
 from sie_module02.eeat_benchmarking import run_eeat_benchmarking
 from sie_module02.eeat_module import run_module_2 as run_eeat_analysis
+from sie_module02.ai_accuracy_checker import run_ai_accuracy_check
 
 # 設定頁面配置
 st.set_page_config(
@@ -82,7 +83,8 @@ def main():
                 "🏠 首頁",
                 "🔧 模組 1: 網站 AI 就緒度分析",
                 "📊 模組 2: E-E-A-T 基準分析",
-                "🎯 完整 E-E-A-T 分析",
+                "🔍 模組 3: AI 資訊正確度檢查",
+                "🎯 模組 4: 完整 E-E-A-T 分析",
                 "📈 分析報告"
             ]
         )
@@ -92,8 +94,9 @@ def main():
         st.markdown("""
         1. **模組 1**: 分析網站技術健康度與 AI 就緒度
         2. **模組 2**: 動態 E-E-A-T 評估與競爭基準分析
-        3. **完整分析**: 傳統 E-E-A-T 分析
-        4. **報告**: 查看歷史分析結果
+        3. **模組 3**: AI 資訊正確度檢查與深度比對
+        4. **模組 4**: 傳統 E-E-A-T 分析
+        5. **報告**: 查看歷史分析結果
         """)
     
     # 主內容區域
@@ -103,7 +106,9 @@ def main():
         show_module1_page(gemini_api_key)
     elif page == "📊 模組 2: E-E-A-T 基準分析":
         show_module2_page(gemini_api_key)
-    elif page == "🎯 完整 E-E-A-T 分析":
+    elif page == "🔍 模組 3: AI 資訊正確度檢查":
+        show_module3_page(gemini_api_key)
+    elif page == "🎯 模組 4: 完整 E-E-A-T 分析":
         show_full_eeat_page(gemini_api_key)
     elif page == "📈 分析報告":
         show_reports_page()
@@ -142,6 +147,36 @@ def show_homepage():
         - 📱 社交媒體權威分析
         - 📰 媒體提及監控
         - 🔄 市場機會識別
+        """)
+    
+    st.markdown("---")
+    
+    col3, col4 = st.columns(2)
+    
+    with col3:
+        st.markdown("### 🔍 模組 3: AI 資訊正確度檢查")
+        st.markdown("""
+        - 📚 權威資料來源整合
+        - 🎯 精準詞組比對分析
+        - 🧠 語意一致性評估
+        - 📊 深度不匹配分析
+        - 🔄 快取機制優化
+        - 💡 改進建議生成
+        - 📈 多維度評分系統
+        - 🎯 事實基礎驗證
+        """)
+    
+    with col4:
+        st.markdown("### 🎯 模組 4: 完整 E-E-A-T 分析")
+        st.markdown("""
+        - 📚 Experience 經驗評估
+        - 🎓 Expertise 專業度分析
+        - 🏆 Authoritativeness 權威性檢查
+        - ✅ Trustworthiness 可信度驗證
+        - 📊 綜合評分系統
+        - 🎯 改進建議
+        - 📈 歷史趨勢追蹤
+        - 🔍 詳細分析報告
         """)
     
     st.markdown("---")
@@ -342,6 +377,175 @@ def display_module2_results(analysis_data: Dict, target_website: str):
     
     with tab5:
         display_strategic_recommendations(analysis_data.get("strategic_recommendations", []))
+
+def show_module3_page(gemini_api_key: Optional[str]):
+    """顯示模組 3 頁面"""
+    st.title("🔍 模組 3: AI 資訊正確度檢查")
+    st.markdown("深度比對 LLM 認知與權威原始資料")
+    
+    # 輸入區域
+    with st.form("module3_form"):
+        # 資料來源設定
+        st.subheader("📚 權威資料來源")
+        source_type = st.selectbox(
+            "來源類型",
+            ["url", "pdf", "text"],
+            help="選擇權威資料的來源類型"
+        )
+        
+        source_value = st.text_input(
+            "來源值",
+            placeholder="URL、PDF 連結或直接輸入文字",
+            help="輸入權威資料的來源"
+        )
+        
+        # 補充資訊
+        supplemental_info = st.text_area(
+            "補充資訊 (可選)",
+            placeholder="額外的權威資訊或背景資料",
+            help="提供額外的權威資訊來增強事實基礎"
+        )
+        
+        # 目標 LLM 模型
+        target_model = st.selectbox(
+            "目標 LLM 模型",
+            ["gemini-1.5-flash", "gemini-1.5-pro"],
+            help="選擇要檢查的目標 LLM 模型"
+        )
+        
+        submitted = st.form_submit_button("🚀 開始檢查", type="primary")
+    
+    if submitted and source_value:
+        if not gemini_api_key:
+            st.error("❌ 請先輸入 Gemini API 金鑰")
+            return
+            
+        with st.spinner("🔍 正在進行 AI 資訊正確度檢查..."):
+            try:
+                # 創建配置數據
+                config_data = {
+                    "accuracy_source": {
+                        "type": source_type,
+                        "value": source_value
+                    },
+                    "supplemental_info": supplemental_info
+                }
+                
+                # 執行檢查
+                result = run_ai_accuracy_check(config_data, gemini_api_key)
+                
+                if "error" in result:
+                    st.error(f"檢查失敗: {result['error']}")
+                    return
+                
+                # 顯示檢查結果
+                display_module3_results(result, source_value, target_model)
+                
+                # 儲存結果
+                save_analysis_result("module3", source_value, result)
+                
+            except Exception as e:
+                st.error(f"檢查過程中發生錯誤: {str(e)}")
+
+def display_module3_results(result: Dict, source_value: str, target_model: str):
+    """顯示模組 3 檢查結果"""
+    st.success(f"✅ 檢查完成: {source_value}")
+    
+    # 總體評分
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        phrase_score = result.get("phrase_matching_score", 0)
+        st.metric("精準詞組比對", f"{phrase_score}/100", "🎯")
+    
+    with col2:
+        semantic_score = result.get("semantic_consistency_score", 0)
+        st.metric("語意一致性", f"{semantic_score}/100", "🧠")
+    
+    with col3:
+        overall_score = result.get("overall_accuracy_score", 0)
+        st.metric("整體正確度", f"{overall_score}/100", "📊")
+    
+    st.markdown("---")
+    
+    # 詳細分析結果
+    tab1, tab2, tab3, tab4 = st.tabs(["📝 比對詳情", "🔍 不匹配分析", "📊 評分細項", "💡 建議"])
+    
+    with tab1:
+        st.subheader("📝 比對詳情")
+        
+        # 資訊分類
+        info_classification = result.get("information_classification", "未知")
+        st.info(f"**資訊分類**: {info_classification}")
+        
+        # LLM 回答
+        llm_response = result.get("llm_response", "")
+        st.text_area("LLM 回答", llm_response, height=150, disabled=True)
+        
+        # 關鍵詞組比對
+        phrase_matching = result.get("phrase_matching_details", {})
+        if phrase_matching:
+            st.subheader("關鍵詞組比對")
+            found_phrases = phrase_matching.get("found_phrases", [])
+            missing_phrases = phrase_matching.get("missing_phrases", [])
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.success(f"✅ 找到的詞組 ({len(found_phrases)}):")
+                for phrase in found_phrases[:10]:  # 只顯示前10個
+                    st.write(f"• {phrase}")
+                if len(found_phrases) > 10:
+                    st.write(f"... 還有 {len(found_phrases) - 10} 個")
+            
+            with col2:
+                st.error(f"❌ 缺失的詞組 ({len(missing_phrases)}):")
+                for phrase in missing_phrases[:10]:  # 只顯示前10個
+                    st.write(f"• {phrase}")
+                if len(missing_phrases) > 10:
+                    st.write(f"... 還有 {len(missing_phrases) - 10} 個")
+    
+    with tab2:
+        st.subheader("🔍 不匹配分析")
+        
+        mismatch_analysis = result.get("mismatch_analysis", [])
+        if mismatch_analysis:
+            for i, analysis in enumerate(mismatch_analysis):
+                with st.expander(f"不匹配 #{i+1}: {analysis.get('phrase', 'N/A')}"):
+                    st.write(f"**類型**: {analysis.get('type', 'N/A')}")
+                    st.write(f"**嚴重程度**: {analysis.get('severity', 'N/A')}")
+                    st.write(f"**分析**: {analysis.get('analysis', 'N/A')}")
+        else:
+            st.info("沒有發現不匹配項目")
+    
+    with tab3:
+        st.subheader("📊 評分細項")
+        
+        # 精準詞組比對詳情
+        phrase_details = result.get("phrase_matching_details", {})
+        if phrase_details:
+            total_phrases = phrase_details.get("total_phrases", 0)
+            found_phrases = phrase_details.get("found_phrases", [])
+            st.metric("總關鍵詞組", total_phrases)
+            st.metric("找到詞組", len(found_phrases))
+            st.metric("準確率", f"{(len(found_phrases) / total_phrases * 100):.1f}%" if total_phrases > 0 else "0%")
+        
+        # 語意一致性詳情
+        semantic_details = result.get("semantic_consistency_details", {})
+        if semantic_details:
+            st.write("**語意一致性分析**:")
+            st.write(f"• 主題一致性: {semantic_details.get('topic_consistency', 'N/A')}")
+            st.write(f"• 事實準確性: {semantic_details.get('factual_accuracy', 'N/A')}")
+            st.write(f"• 邏輯連貫性: {semantic_details.get('logical_coherence', 'N/A')}")
+    
+    with tab4:
+        st.subheader("💡 建議")
+        
+        recommendations = result.get("recommendations", [])
+        if recommendations:
+            for i, rec in enumerate(recommendations):
+                st.write(f"{i+1}. **{rec.get('category', 'N/A')}**: {rec.get('suggestion', 'N/A')}")
+        else:
+            st.info("沒有特定建議")
 
 def show_full_eeat_page(gemini_api_key: Optional[str]):
     """顯示完整 E-E-A-T 分析頁面"""
