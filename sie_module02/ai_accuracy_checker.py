@@ -175,10 +175,18 @@ class AIAccuracyChecker:
         for token in doc:
             if token.is_digit or token.like_num:
                  key_phrases.add(token.text.strip())
-        for chunk in doc.noun_chunks:
-            # 增加一些過濾條件，避免太多無意義的名詞片語
-            if len(chunk.text.strip()) > 2 and not chunk.text.strip().isnumeric():
-                key_phrases.add(chunk.text.strip())
+        
+        # 中文模型不支援 noun_chunks，改用其他方法提取關鍵詞組
+        try:
+            for chunk in doc.noun_chunks:
+                # 增加一些過濾條件，避免太多無意義的名詞片語
+                if len(chunk.text.strip()) > 2 and not chunk.text.strip().isnumeric():
+                    key_phrases.add(chunk.text.strip())
+        except NotImplementedError:
+            # 中文模型不支援 noun_chunks，使用詞性標註來提取名詞
+            for token in doc:
+                if token.pos_ in ["NOUN", "PROPN"] and len(token.text.strip()) > 1:
+                    key_phrases.add(token.text.strip())
         
         key_phrases = {p for p in key_phrases if len(p) > 1 and not p.isspace()}
 
