@@ -314,6 +314,34 @@ class AIAccuracyChecker:
 
         overall_score = round((phrase_score * 0.4) + (semantic_score * 0.6))
         
+        # 計算詞組比對詳情
+        if nlp:
+            doc = nlp(ground_truth)
+            key_phrases = set()
+            for ent in doc.ents:
+                if ent.label_ in ["PRODUCT", "ORG", "MONEY", "QUANTITY", "CARDINAL", "GPE", "DATE"]:
+                    key_phrases.add(ent.text.strip())
+            for token in doc:
+                if token.is_digit or token.like_num:
+                     key_phrases.add(token.text.strip())
+            
+            try:
+                for chunk in doc.noun_chunks:
+                    if len(chunk.text.strip()) > 2 and not chunk.text.strip().isnumeric():
+                        key_phrases.add(chunk.text.strip())
+            except NotImplementedError:
+                for token in doc:
+                    if token.pos_ in ["NOUN", "PROPN"] and len(token.text.strip()) > 1:
+                        key_phrases.add(token.text.strip())
+            
+            key_phrases = {p for p in key_phrases if len(p) > 1 and not p.isspace()}
+            found_phrases = [phrase for phrase in key_phrases if phrase.lower() in llm_answer.lower()]
+            missing_phrases = [phrase for phrase in key_phrases if phrase.lower() not in llm_answer.lower()]
+        else:
+            found_phrases = []
+            missing_phrases = []
+            key_phrases = set()
+        
         result = {
             "ai_accuracy_v2": {
                 "source_info": {
@@ -322,13 +350,19 @@ class AIAccuracyChecker:
                     "classification": classification
                 },
                 "model_used": model_to_check,
+                "llm_response": llm_answer,
                 "accuracy_scores": {
                     "overall_score": overall_score,
                     "phrase_matching_score": phrase_score,
                     "semantic_consistency_score": semantic_score
                 },
                 "semantic_score_reasoning": semantic_reasoning,
-                "mismatched_phrases_analysis": final_mismatches, # 欄位更新為更具描述性的名稱
+                "mismatched_phrases_analysis": final_mismatches,
+                "phrase_matching_details": {
+                    "total_phrases": len(key_phrases),
+                    "found_phrases": found_phrases,
+                    "missing_phrases": missing_phrases
+                }
             }
         }
         print("--- 檢查完成 ---")

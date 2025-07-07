@@ -438,8 +438,32 @@ def show_module3_page(gemini_api_key: Optional[str]):
                     st.error(f"檢查失敗: {result['error']}")
                     return
                 
+                # 提取實際的檢查結果
+                if "ai_accuracy_v2" in result:
+                    actual_result = result["ai_accuracy_v2"]
+                    # 轉換為前端期望的格式
+                    display_result = {
+                        "phrase_matching_score": actual_result.get("accuracy_scores", {}).get("phrase_matching_score", 0),
+                        "semantic_consistency_score": actual_result.get("accuracy_scores", {}).get("semantic_consistency_score", 0),
+                        "overall_accuracy_score": actual_result.get("accuracy_scores", {}).get("overall_score", 0),
+                        "information_classification": actual_result.get("source_info", {}).get("classification", "未知"),
+                        "llm_response": actual_result.get("llm_response", ""),
+                        "phrase_matching_details": actual_result.get("phrase_matching_details", {
+                            "total_phrases": 0,
+                            "found_phrases": [],
+                            "missing_phrases": []
+                        }),
+                        "mismatch_analysis": actual_result.get("mismatched_phrases_analysis", []),
+                        "semantic_consistency_details": {
+                            "reasoning": actual_result.get("semantic_score_reasoning", "")
+                        },
+                        "recommendations": []
+                    }
+                else:
+                    display_result = result
+                
                 # 顯示檢查結果
-                display_module3_results(result, source_value, target_model)
+                display_module3_results(display_result, source_value, target_model)
                 
                 # 儲存結果
                 save_analysis_result("module3", source_value, result)
